@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Steam OS — Simulador de Sistema Operativo</title>
+    <meta name="description"
+        content="Simulador de Sistema Operativo con interfaz clockpunk. Simula CPU, Memoria, Procesos y más.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Rye&family=VT323&family=Cinzel:wght@400;700;900&family=Share+Tech+Mono&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="bg-gears" aria-hidden="true">
+        <div class="bg-gear bg-gear-1">⚙</div>
+        <div class="bg-gear bg-gear-2">⚙</div>
+        <div class="bg-gear bg-gear-3">⚙</div>
+        <div class="bg-gear bg-gear-4">⚙</div>
+    </div>
+
+    <div class="simulator-container">
+
+        <!-- HEADER -->
+        <header class="top-bar">
+            <div class="top-bar__left">
+                <div class="header-gear spinning-slow">⚙</div>
+                <div class="time-block">
+                    <span class="label">Hora del sistema</span>
+                    <span class="nixie" id="system-time">00:00:00</span>
+                </div>
+            </div>
+            <div class="top-bar__center">
+                <h1 class="os-title">⊱ STEAM OS ⊰</h1>
+                <p class="os-subtitle">Simulador de Sistema Operativo</p>
+            </div>
+            <div class="top-bar__right">
+                <div class="kernel-block">
+                    <span class="label">Kernel</span>
+                    <div class="kernel-badge">
+                        <span class="pulse-dot" id="kernel-dot"></span>
+                        <span id="kernel-status-text">Inicializado</span>
+                    </div>
+                </div>
+                <div class="header-gear spinning-slow reverse">⚙</div>
+            </div>
+        </header>
+
+        <!-- MAIN GRID -->
+        <main class="dashboard-grid">
+
+            <!-- CPU PANEL -->
+            <section class="panel cpu-panel" id="panel-cpu">
+                <div class="panel-header">
+                    <span class="panel-gear spinning-slow">⚙</span>
+                    <h2>CPU</h2>
+                    <span class="panel-gear spinning-slow reverse">⚙</span>
+                </div>
+                <div class="panel-content">
+                    <div class="gauge-container">
+                        <svg class="steam-gauge-svg" viewBox="0 0 200 200" width="140" height="140"
+                            style="margin-bottom: 10px;">
+                            <defs>
+                                <radialGradient id="dial-bg" cx="50%" cy="50%" r="50%">
+                                    <stop offset="0%" stop-color="#2a1f10" />
+                                    <stop offset="80%" stop-color="#1c1208" />
+                                    <stop offset="100%" stop-color="#0a0704" />
+                                </radialGradient>
+                                <radialGradient id="screw-bg" cx="30%" cy="30%" r="60%">
+                                    <stop offset="0%" stop-color="#e8c96a" />
+                                    <stop offset="100%" stop-color="#8a6c28" />
+                                </radialGradient>
+                            </defs>
+
+                            <!-- Outer brass rim -->
+                            <circle cx="100" cy="100" r="95" fill="none" stroke="#b06a2f" stroke-width="10"
+                                filter="drop-shadow(0 4px 6px rgba(0,0,0,0.8))" />
+                            <!-- Inner dark dial -->
+                            <circle cx="100" cy="100" r="90" fill="url(#dial-bg)" stroke="#3d2e12" stroke-width="2" />
+
+                            <!-- Tick marks around dial -->
+                            <g stroke="#c8a84b" stroke-width="2">
+                                <line x1="20" y1="100" x2="28" y2="100" />
+                                <line x1="180" y1="100" x2="172" y2="100" />
+                                <line x1="100" y1="20" x2="100" y2="28" />
+                                <line x1="43" y1="43" x2="49" y2="49" />
+                                <line x1="157" y1="43" x2="151" y2="49" />
+                                <line x1="43" y1="157" x2="49" y2="151" />
+                                <line x1="157" y1="157" x2="151" y2="151" />
+                            </g>
+
+                            <!-- Danger zone arc -->
+                            <path d="M 156.5 156.5 A 80 80 0 0 0 180 100" fill="none" stroke="rgba(204,51,34,0.3)"
+                                stroke-width="14" />
+
+                            <!-- Rivets on rim -->
+                            <circle cx="100" cy="10" r="3.5" fill="url(#screw-bg)" />
+                            <circle cx="190" cy="100" r="3.5" fill="url(#screw-bg)" />
+                            <circle cx="100" cy="190" r="3.5" fill="url(#screw-bg)" />
+                            <circle cx="10" cy="100" r="3.5" fill="url(#screw-bg)" />
+                            <circle cx="36" cy="36" r="3.5" fill="url(#screw-bg)" />
+                            <circle cx="164" cy="36" r="3.5" fill="url(#screw-bg)" />
+                            <circle cx="36" cy="164" r="3.5" fill="url(#screw-bg)" />
+                            <circle cx="164" cy="164" r="3.5" fill="url(#screw-bg)" />
+
+                            <!-- Center pin base -->
+                            <circle cx="100" cy="100" r="14" fill="#0a0704" stroke="#c8a84b" stroke-width="2" />
+
+                            <!-- Pressure Needle -->
+                            <g id="cpu-needle" transform="rotate(-135, 100, 100)"
+                                style="transition: transform 0.4s cubic-bezier(0.3, 1.5, 0.6, 1);">
+                                <polygon points="96,105 104,105 100,20" fill="#cc3322"
+                                    filter="drop-shadow(2px 4px 4px rgba(0,0,0,0.6))" />
+                                <!-- Needle inner highlight -->
+                                <polygon points="98,103 102,103 100,24" fill="#ff5544" />
+                                <circle cx="100" cy="100" r="8" fill="url(#screw-bg)" />
+                                <circle cx="100" cy="100" r="3" fill="#1c1208" />
+                            </g>
+                        </svg>
+                        <div class="gauge-value nixie" id="cpu-usage-text">0%</div>
+                    </div>
+                    <div class="cpu-stats">
+                        <div class="stat-row">
+                            <span class="stat-label">Estado</span>
+                            <span class="stat-val status-chip idle" id="cpu-status">Libre</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Proceso</span>
+                            <span class="stat-val nixie small" id="cpu-process">Ninguno</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Ciclos</span>
+                            <span class="stat-val nixie small" id="cpu-cycles">0</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PROCESSES PANEL -->
+            <section class="panel processes-panel" id="panel-processes">
+                <div class="panel-header">
+                    <span class="panel-gear spinning-slow">⚙</span>
+                    <h2>Procesos</h2>
+                    <span class="panel-gear spinning-slow reverse">⚙</span>
+                </div>
+                <div class="panel-content">
+                    <div class="process-list" id="process-list">
+                        <div class="process-empty" id="process-empty">
+                            <div class="empty-gear">⚙</div>
+                            <p>Sin procesos activos</p>
+                        </div>
+                    </div>
+                    <div class="process-controls">
+                        <button class="btn btn-primary" id="btn-new-process">✦ Nuevo Proceso</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- MEMORY PANEL -->
+            <section class="panel memory-panel" id="panel-memory">
+                <div class="panel-header">
+                    <span class="panel-gear spinning-slow">⚙</span>
+                    <h2>Memoria</h2>
+                    <span class="panel-gear spinning-slow reverse">⚙</span>
+                </div>
+                <div class="panel-content">
+                    <div class="memory-grid" id="memory-grid"></div>
+                    <div class="memory-stats">
+                        <div class="stat-row">
+                            <span class="stat-label">Total</span>
+                            <span class="stat-val nixie small" id="mem-total">4096 MB</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Disponible</span>
+                            <span class="stat-val nixie small" id="mem-available">4096 MB</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Uso</span>
+                            <span class="stat-val nixie small" id="mem-usage">0%</span>
+                        </div>
+                    </div>
+                    <div class="pb-liquid" id="mem-liquid" role="progressbar" aria-valuenow="0" aria-valuemin="0"
+                        aria-valuemax="100" aria-label="Uso de memoria">
+                        <span class="pb-liquid-fill" id="mem-liquid-fill" style="--pb-liquid-level: 0%">
+                            <svg class="pb-liquid-wave w1" viewBox="0 0 200 20" preserveAspectRatio="none"
+                                aria-hidden="true">
+                                <path d="M0 10 Q 25 0 50 10 T 100 10 T 150 10 T 200 10 V 20 H 0 Z"
+                                    fill="currentColor" />
+                            </svg>
+                            <svg class="pb-liquid-wave w2" viewBox="0 0 200 20" preserveAspectRatio="none"
+                                aria-hidden="true">
+                                <path d="M0 10 Q 25 20 50 10 T 100 10 T 150 10 T 200 10 V 20 H 0 Z"
+                                    fill="currentColor" />
+                            </svg>
+                        </span>
+                        <span class="pb-liquid-label" id="mem-liquid-label">
+                            <strong id="mem-liquid-pct">0%</strong>
+                            <span>memoria en uso</span>
+                        </span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- FILE SYSTEM PANEL -->
+            <section class="panel filesystem-panel" id="panel-fs">
+                <div class="panel-header">
+                    <span class="panel-gear spinning-slow">⚙</span>
+                    <h2>Sistema de Archivos</h2>
+                    <span class="panel-gear spinning-slow reverse">⚙</span>
+                </div>
+                <div class="panel-content">
+                    <div class="file-tree" id="file-tree">
+                        <div class="tree-node root">📁 /raíz</div>
+                        <div class="tree-node child">📂 /bin</div>
+                        <div class="tree-node child">📂 /usr</div>
+                        <div class="tree-node child">📂 /tmp</div>
+                        <div class="tree-node child">📄 kernel.sys</div>
+                        <div class="tree-node child">📄 init.conf</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- I/O DEVICES PANEL -->
+            <section class="panel io-panel" id="panel-io">
+                <div class="panel-header">
+                    <span class="panel-gear spinning-slow">⚙</span>
+                    <h2>Dispositivos E/S</h2>
+                    <span class="panel-gear spinning-slow reverse">⚙</span>
+                </div>
+                <div class="panel-content">
+                    <div class="device-list">
+                        <div class="device-item">
+                            <span class="device-icon">⌨</span>
+                            <span class="device-name">Teclado</span>
+                            <span class="device-status ok">OK</span>
+                        </div>
+                        <div class="device-item">
+                            <span class="device-icon">⊕</span>
+                            <span class="device-name">Ratón</span>
+                            <span class="device-status ok">OK</span>
+                        </div>
+                        <div class="device-item">
+                            <span class="device-icon">◉</span>
+                            <span class="device-name">Disco Duro</span>
+                            <span class="device-status ok">OK</span>
+                        </div>
+                        <div class="device-item">
+                            <span class="device-icon">⋈</span>
+                            <span class="device-name">Red</span>
+                            <span class="device-status warn">Inactivo</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SYSTEM LOG -->
+            <section class="panel log-panel" id="panel-log">
+                <div class="panel-header">
+                    <span class="panel-gear spinning-slow">⚙</span>
+                    <h2>Log del Sistema</h2>
+                    <span class="panel-gear spinning-slow reverse">⚙</span>
+                </div>
+                <div class="panel-content">
+                    <div class="log-output" id="log-output"></div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- FOOTER CONTROLS -->
+        <footer class="control-bar">
+            <div class="control-bar__inner">
+                <button class="btn btn-success" id="btn-start">▶ Iniciar SO</button>
+                <button class="btn btn-danger" id="btn-stop" disabled>■ Detener</button>
+                <button class="btn btn-secondary" id="btn-restart" disabled>↺ Reiniciar</button>
+                <button class="btn btn-accent" id="btn-tick">⏩ Avanzar Ciclo</button>
+                <button class="btn btn-secondary" id="btn-config">⚙ Configuración</button>
+            </div>
+        </footer>
+
+    </div>
+
+    <!-- NEW PROCESS MODAL -->
+    <div class="modal-overlay" id="modal-process" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-panel">
+            <div class="panel-header">
+                <span class="panel-gear spinning-slow">⚙</span>
+                <h3 id="modal-title">Nuevo Proceso</h3>
+                <span class="panel-gear spinning-slow reverse">⚙</span>
+            </div>
+            <div class="modal-content">
+                <label for="input-process-name" class="form-label">Nombre del Proceso</label>
+                <input type="text" id="input-process-name" class="form-input" placeholder="ej. calc.exe" maxlength="24">
+                <label for="input-process-mem" class="form-label">Memoria requerida (MB)</label>
+                <input type="number" id="input-process-mem" class="form-input" value="128" min="1" max="2048">
+                <label for="input-process-priority" class="form-label">Prioridad</label>
+                <select id="input-process-priority" class="form-input">
+                    <option value="alta">Alta</option>
+                    <option value="media" selected>Media</option>
+                    <option value="baja">Baja</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="btn-modal-cancel">Cancelar</button>
+                <button class="btn btn-primary" id="btn-modal-confirm">Encolar Proceso</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
