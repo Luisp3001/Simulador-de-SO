@@ -4,383 +4,398 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Steam OS — Simulador de Sistema Operativo</title>
-    <meta name="description"
-        content="Simulador de Sistema Operativo con interfaz clockpunk. Simula CPU, Memoria, Procesos y más.">
+    <title>Hephaestus Core — Simulador de Sistema Operativo</title>
+    <meta name="description" content="Simulador de Sistema Operativo con interfaz moderna. CPU, Memoria, Planificación de Procesos, Archivos y E/S.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Rye&family=VT323&family=Cinzel:wght@400;700;900&family=Share+Tech+Mono&display=swap"
-        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-    <div class="bg-gears" aria-hidden="true">
-        <div class="bg-gear bg-gear-1">⚙</div>
-        <div class="bg-gear bg-gear-2">⚙</div>
-        <div class="bg-gear bg-gear-3">⚙</div>
-        <div class="bg-gear bg-gear-4">⚙</div>
-    </div>
+    <div class="app-wrapper">
 
-    <div class="simulator-container">
-
-        <!-- HEADER -->
-        <header class="top-bar">
-            <div class="top-bar__left">
-                <div class="header-gear spinning-slow">⚙</div>
-                <div class="time-block">
-                    <span class="label">Hora del sistema</span>
-                    <span class="nixie" id="system-time">00:00:00</span>
+        <!-- TOP BAR -->
+        <header class="top-navbar">
+            <div class="nav-brand">
+                <div class="brand-icon">🔥</div>
+                <div>
+                    <h1 class="brand-title">HEPHAESTUS CORE</h1>
+                    <p class="brand-sub">Simulador de Sistema Operativo v0.1.0</p>
                 </div>
             </div>
-            <div class="top-bar__center">
-                <h1 class="os-title">⊱ STEAM OS ⊰</h1>
-                <p class="os-subtitle">Simulador de Sistema Operativo</p>
-            </div>
-            <div class="top-bar__right">
-                <div class="kernel-block">
-                    <span class="label">Kernel</span>
-                    <div class="kernel-badge">
-                        <span class="pulse-dot" id="kernel-dot"></span>
-                        <span id="kernel-status-text">Inicializado</span>
-                    </div>
+
+            <div class="nav-center-stats">
+                <div class="stat-pill">
+                    <span class="pulse-dot stopped" id="kernel-dot"></span>
+                    <span class="stat-label">Kernel:</span>
+                    <strong id="kernel-status-text" class="stat-value">Detenido</strong>
                 </div>
-                <div class="header-gear spinning-slow reverse">⚙</div>
+                <div class="stat-pill">
+                    <span class="stat-icon">⏱</span>
+                    <span class="stat-label">Uptime:</span>
+                    <strong id="system-time" class="stat-value font-mono">00:00:00</strong>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-icon">🔄</span>
+                    <span class="stat-label">Ciclo Reloj:</span>
+                    <strong id="cpu-cycles" class="stat-value font-mono">0</strong>
+                </div>
+            </div>
+
+            <!-- PRIMARY CONTROLS (IN HEADER FOR EASY ACCESS) -->
+            <div class="nav-actions">
+                <button class="btn btn-success" id="btn-start">
+                    <span class="btn-icon">▶</span> Iniciar SO
+                </button>
+                <button class="btn btn-accent" id="btn-tick">
+                    <span class="btn-icon">⏩</span> Avanzar Ciclo
+                </button>
+                <button class="btn btn-secondary" id="btn-restart" disabled>
+                    <span class="btn-icon">↺</span> Reiniciar
+                </button>
+                <button class="btn btn-danger" id="btn-stop" disabled>
+                    <span class="btn-icon">■</span> Detener
+                </button>
             </div>
         </header>
 
-        <!-- MAIN GRID -->
-        <main class="dashboard-grid">
+        <!-- SCHEDULER BANNER / TOOLBAR -->
+        <div class="scheduler-toolbar">
+            <div class="scheduler-left">
+                <span class="scheduler-title-icon">⚙</span>
+                <span class="scheduler-bar-title">Algoritmo de Planificación:</span>
+                <div class="active-scheduler-chip" id="metrics-scheduler-name">FCFS — First Come, First Served</div>
+            </div>
 
-            <!-- CPU PANEL -->
-            <section class="panel cpu-panel" id="panel-cpu">
-                <div class="panel-header">
-                    <span class="panel-gear spinning-slow">⚙</span>
-                    <h2>CPU</h2>
-                    <span class="panel-gear spinning-slow reverse">⚙</span>
+            <div class="scheduler-controls-group">
+                <label for="scheduler-select" class="control-label">Cambiar a:</label>
+                <select id="scheduler-select" class="form-input form-select scheduler-dropdown">
+                    <option value="fcfs">FCFS (First Come, First Served)</option>
+                    <option value="sjf">SJF (Shortest Job First)</option>
+                    <option value="round_robin">Round Robin (Turno Circular)</option>
+                    <option value="prioridad">Por Prioridad (Preemptivo)</option>
+                    <option value="colas_multiples">Colas Múltiples con Feedback</option>
+                    <option value="garantizado">Planificación Garantizada (Fair Share)</option>
+                    <option value="dos_niveles">Planificación a Dos Niveles</option>
+                </select>
+
+                <div id="quantum-control" class="quantum-wrapper" style="display:none">
+                    <label for="quantum-input" class="control-label">Quantum:</label>
+                    <input type="number" id="quantum-input" class="form-input quantum-input-field" value="2" min="1" max="20">
                 </div>
-                <div class="panel-content">
-                    <div class="gauge-container">
-                        <svg class="steam-gauge-svg" viewBox="0 0 200 200" width="140" height="140"
-                            style="margin-bottom: 10px;">
-                            <defs>
-                                <radialGradient id="dial-bg" cx="50%" cy="50%" r="50%">
-                                    <stop offset="0%" stop-color="#2a1f10" />
-                                    <stop offset="80%" stop-color="#1c1208" />
-                                    <stop offset="100%" stop-color="#0a0704" />
-                                </radialGradient>
-                                <radialGradient id="screw-bg" cx="30%" cy="30%" r="60%">
-                                    <stop offset="0%" stop-color="#e8c96a" />
-                                    <stop offset="100%" stop-color="#8a6c28" />
-                                </radialGradient>
-                            </defs>
 
-                            <!-- Outer brass rim -->
-                            <circle cx="100" cy="100" r="95" fill="none" stroke="#b06a2f" stroke-width="10"
-                                filter="drop-shadow(0 4px 6px rgba(0,0,0,0.8))" />
-                            <!-- Inner dark dial -->
-                            <circle cx="100" cy="100" r="90" fill="url(#dial-bg)" stroke="#3d2e12" stroke-width="2" />
+                <button class="btn btn-primary-outline" id="btn-apply-scheduler">Aplicar Algoritmo</button>
+            </div>
+        </div>
 
-                            <!-- Tick marks around dial -->
-                            <g stroke="#c8a84b" stroke-width="2">
-                                <line x1="20" y1="100" x2="28" y2="100" />
-                                <line x1="180" y1="100" x2="172" y2="100" />
-                                <line x1="100" y1="20" x2="100" y2="28" />
-                                <line x1="43" y1="43" x2="49" y2="49" />
-                                <line x1="157" y1="43" x2="151" y2="49" />
-                                <line x1="43" y1="157" x2="49" y2="151" />
-                                <line x1="157" y1="157" x2="151" y2="151" />
-                            </g>
+        <!-- MAIN 3-COLUMN DASHBOARD GRID -->
+        <main class="dashboard-layout">
 
-                            <!-- Danger zone arc -->
-                            <path d="M 156.5 156.5 A 80 80 0 0 0 180 100" fill="none" stroke="rgba(204,51,34,0.3)"
-                                stroke-width="14" />
+            <!-- LEFT COLUMN: HARDWARE & TELEMETRY -->
+            <aside class="col-hardware">
 
-                            <!-- Rivets on rim -->
-                            <circle cx="100" cy="10" r="3.5" fill="url(#screw-bg)" />
-                            <circle cx="190" cy="100" r="3.5" fill="url(#screw-bg)" />
-                            <circle cx="100" cy="190" r="3.5" fill="url(#screw-bg)" />
-                            <circle cx="10" cy="100" r="3.5" fill="url(#screw-bg)" />
-                            <circle cx="36" cy="36" r="3.5" fill="url(#screw-bg)" />
-                            <circle cx="164" cy="36" r="3.5" fill="url(#screw-bg)" />
-                            <circle cx="36" cy="164" r="3.5" fill="url(#screw-bg)" />
-                            <circle cx="164" cy="164" r="3.5" fill="url(#screw-bg)" />
-
-                            <!-- Center pin base -->
-                            <circle cx="100" cy="100" r="14" fill="#0a0704" stroke="#c8a84b" stroke-width="2" />
-
-                            <!-- Pressure Needle -->
-                            <g id="cpu-needle" transform="rotate(-135, 100, 100)"
-                                style="transition: transform 0.4s cubic-bezier(0.3, 1.5, 0.6, 1);">
-                                <polygon points="96,105 104,105 100,20" fill="#cc3322"
-                                    filter="drop-shadow(2px 4px 4px rgba(0,0,0,0.6))" />
-                                <!-- Needle inner highlight -->
-                                <polygon points="98,103 102,103 100,24" fill="#ff5544" />
-                                <circle cx="100" cy="100" r="8" fill="url(#screw-bg)" />
-                                <circle cx="100" cy="100" r="3" fill="#1c1208" />
-                            </g>
-                        </svg>
-                        <div class="gauge-value nixie" id="cpu-usage-text">0%</div>
+                <!-- CPU PANEL -->
+                <section class="card panel-cpu" id="panel-cpu">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">💻</span>
+                            <h2>CPU Mononúcleo</h2>
+                        </div>
+                        <span class="status-badge idle" id="cpu-status">Libre</span>
                     </div>
-                    <div class="cpu-stats">
-                        <div class="stat-row">
-                            <span class="stat-label">Estado</span>
-                            <span class="stat-val status-chip idle" id="cpu-status">Libre</span>
-                        </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Proceso</span>
-                            <span class="stat-val nixie small" id="cpu-process">Ninguno</span>
-                        </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Ciclos</span>
-                            <span class="stat-val nixie small" id="cpu-cycles">0</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
 
-            <!-- PROCESSES PANEL -->
-            <section class="panel processes-panel" id="panel-processes">
-                <div class="panel-header">
-                    <span class="panel-gear spinning-slow">⚙</span>
-                    <h2>Procesos</h2>
-                    <span class="panel-gear spinning-slow reverse">⚙</span>
-                </div>
-                <div class="panel-content">
-                    <div class="process-list" id="process-list">
-                        <div class="process-empty" id="process-empty">
-                            <div class="empty-gear">⚙</div>
-                            <p>Sin procesos activos</p>
-                        </div>
-                    </div>
-                    <div class="process-controls">
-                        <button class="btn btn-primary" id="btn-new-process">✦ Nuevo Proceso</button>
-                    </div>
-                </div>
-            </section>
-
-            <!-- MEMORY PANEL -->
-            <section class="panel memory-panel" id="panel-memory">
-                <div class="panel-header">
-                    <span class="panel-gear spinning-slow">⚙</span>
-                    <h2>Memoria</h2>
-                    <span class="panel-gear spinning-slow reverse">⚙</span>
-                </div>
-                <div class="panel-content">
-                    <div class="memory-grid" id="memory-grid"></div>
-                    <div class="memory-stats">
-                        <div class="stat-row">
-                            <span class="stat-label">Total</span>
-                            <span class="stat-val nixie small" id="mem-total">4096 MB</span>
-                        </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Disponible</span>
-                            <span class="stat-val nixie small" id="mem-available">4096 MB</span>
-                        </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Uso</span>
-                            <span class="stat-val nixie small" id="mem-usage">0%</span>
-                        </div>
-                    </div>
-                    <div class="pb-liquid" id="mem-liquid" role="progressbar" aria-valuenow="0" aria-valuemin="0"
-                        aria-valuemax="100" aria-label="Uso de memoria">
-                        <span class="pb-liquid-fill" id="mem-liquid-fill" style="--pb-liquid-level: 0%">
-                            <svg class="pb-liquid-wave w1" viewBox="0 0 200 20" preserveAspectRatio="none"
-                                aria-hidden="true">
-                                <path d="M0 10 Q 25 0 50 10 T 100 10 T 150 10 T 200 10 V 20 H 0 Z"
-                                    fill="currentColor" />
+                    <div class="card-body">
+                        <div class="cpu-gauge-wrapper">
+                            <svg class="modern-gauge-svg" viewBox="0 0 160 160" width="140" height="140">
+                                <defs>
+                                    <linearGradient id="cpu-ring-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" stop-color="#06b6d4" />
+                                        <stop offset="60%" stop-color="#3b82f6" />
+                                        <stop offset="100%" stop-color="#ec4899" />
+                                    </linearGradient>
+                                    <filter id="cpu-glow" x="-20%" y="-20%" width="140%" height="140%">
+                                        <feGaussianBlur stdDeviation="3" result="blur" />
+                                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                    </filter>
+                                </defs>
+                                <!-- Background Track -->
+                                <circle cx="80" cy="80" r="62" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="10" stroke-linecap="round" />
+                                <!-- Foreground Dynamic Ring -->
+                                <circle id="cpu-ring-fill" cx="80" cy="80" r="62" fill="none" stroke="url(#cpu-ring-grad)" stroke-width="10"
+                                    stroke-linecap="round" stroke-dasharray="389.56" stroke-dashoffset="389.56"
+                                    transform="rotate(-90 80 80)"
+                                    filter="url(#cpu-glow)"
+                                    style="transition: stroke-dashoffset 0.45s cubic-bezier(0.16, 1, 0.3, 1);" />
                             </svg>
-                            <svg class="pb-liquid-wave w2" viewBox="0 0 200 20" preserveAspectRatio="none"
-                                aria-hidden="true">
-                                <path d="M0 10 Q 25 20 50 10 T 100 10 T 150 10 T 200 10 V 20 H 0 Z"
-                                    fill="currentColor" />
-                            </svg>
-                        </span>
-                        <span class="pb-liquid-label" id="mem-liquid-label">
-                            <strong id="mem-liquid-pct">0%</strong>
-                            <span>memoria en uso</span>
-                        </span>
+                            <div class="gauge-center-text">
+                                <span class="gauge-pct" id="cpu-usage-text">0%</span>
+                                <span class="gauge-sub">Uso CPU</span>
+                            </div>
+                        </div>
+
+                        <div class="stat-key-values">
+                            <div class="stat-kv">
+                                <span class="kv-label">Proceso en Ejecución</span>
+                                <span class="kv-value highlight font-mono" id="cpu-process">Ninguno</span>
+                            </div>
+                            <div class="stat-kv">
+                                <span class="kv-label">Velocidad Reloj</span>
+                                <span class="kv-value font-mono">3200 MHz</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- MEMORY PANEL -->
+                <section class="card panel-memory" id="panel-memory">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">🧠</span>
+                            <h2>Memoria RAM</h2>
+                        </div>
+                        <span class="kv-badge font-mono" id="mem-usage">0%</span>
+                    </div>
+
+                    <div class="card-body">
+                        <!-- LED Memory Blocks Matrix -->
+                        <div class="memory-grid-label">Mapa de Bloques (64 bloques):</div>
+                        <div class="memory-grid" id="memory-grid"></div>
+
+                        <div class="memory-stats-grid">
+                            <div class="mem-stat-item">
+                                <span class="mem-stat-label">Total</span>
+                                <strong class="mem-stat-val" id="mem-total">4096 MB</strong>
+                            </div>
+                            <div class="mem-stat-item">
+                                <span class="mem-stat-label">Disponible</span>
+                                <strong class="mem-stat-val text-success" id="mem-available">4096 MB</strong>
+                            </div>
+                        </div>
+
+                        <!-- Modern Memory Bar -->
+                        <div class="modern-progress-container" id="mem-liquid" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                            <div class="modern-progress-fill" id="mem-liquid-fill" style="width: 0%;">
+                                <div class="progress-glow"></div>
+                            </div>
+                            <div class="progress-overlay-text" id="mem-liquid-label">
+                                <span id="mem-liquid-pct">0%</span> en uso
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- I/O DEVICES PANEL -->
+                <section class="card panel-io" id="panel-io">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">🔌</span>
+                            <h2>Dispositivos E/S</h2>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="device-list">
+                            <div class="device-item">
+                                <div class="device-info">
+                                    <span class="device-icon">⌨️</span>
+                                    <span class="device-name">Teclado</span>
+                                </div>
+                                <span class="status-chip ok">OK</span>
+                            </div>
+                            <div class="device-item">
+                                <div class="device-info">
+                                    <span class="device-icon">🖱️</span>
+                                    <span class="device-name">Ratón</span>
+                                </div>
+                                <span class="status-chip ok">OK</span>
+                            </div>
+                            <div class="device-item">
+                                <div class="device-info">
+                                    <span class="device-icon">💾</span>
+                                    <span class="device-name">Disco Duro (500 GB)</span>
+                                </div>
+                                <span class="status-chip ok">OK</span>
+                            </div>
+                            <div class="device-item">
+                                <div class="device-info">
+                                    <span class="device-icon">🌐</span>
+                                    <span class="device-name">Tarjeta de Red</span>
+                                </div>
+                                <span class="status-chip ok">OK</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </aside>
+
+            <!-- CENTER COLUMN: PROCESSES & FILE SYSTEM -->
+            <section class="col-center">
+
+                <!-- PROCESSES PANEL -->
+                <div class="card panel-processes" id="panel-processes">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">⚡</span>
+                            <h2>Gestor de Procesos</h2>
+                        </div>
+                        <button class="btn btn-primary btn-sm" id="btn-new-process">
+                            <span>+</span> Crear Proceso
+                        </button>
+                    </div>
+
+                    <div class="card-body">
+                        <div class="process-table-header">
+                            <span class="col-h-pid">PID</span>
+                            <span class="col-h-name">Nombre</span>
+                            <span class="col-h-mem">RAM</span>
+                            <span class="col-h-rem">Ráfaga Rest.</span>
+                            <span class="col-h-nice">Prioridad</span>
+                            <span class="col-h-state">Estado</span>
+                            <span class="col-h-act">Acción</span>
+                        </div>
+
+                        <div class="process-list" id="process-list">
+                            <div class="process-empty" id="process-empty">
+                                <div class="empty-icon">📂</div>
+                                <p class="empty-title">Sin procesos activos</p>
+                                <p class="empty-sub">Haz clic en "+ Crear Proceso" para encolar un nuevo proceso al sistema.</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
+
+                <!-- FILE SYSTEM PANEL -->
+                <div class="card panel-filesystem" id="panel-fs">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">📁</span>
+                            <h2>Sistema de Archivos Virtual</h2>
+                        </div>
+                        <span class="kv-badge">ext4 sim</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="file-tree" id="file-tree">
+                            <div class="tree-node root">📁 /raíz (sistema montado)</div>
+                            <div class="tree-node child">📂 /bin <span class="file-tag">ejecutables</span></div>
+                            <div class="tree-node child">📂 /usr <span class="file-tag">librerías</span></div>
+                            <div class="tree-node child">📂 /tmp <span class="file-tag">temporal</span></div>
+                            <div class="tree-node child leaf">📄 kernel.sys <span class="file-tag">4 MB</span></div>
+                            <div class="tree-node child leaf">📄 init.conf <span class="file-tag">1 KB</span></div>
+                        </div>
+                    </div>
+                </div>
+
             </section>
 
-            <!-- FILE SYSTEM PANEL -->
-            <section class="panel filesystem-panel" id="panel-fs">
-                <div class="panel-header">
-                    <span class="panel-gear spinning-slow">⚙</span>
-                    <h2>Sistema de Archivos</h2>
-                    <span class="panel-gear spinning-slow reverse">⚙</span>
-                </div>
-                <div class="panel-content">
-                    <div class="file-tree" id="file-tree">
-                        <div class="tree-node root">📁 /raíz</div>
-                        <div class="tree-node child">📂 /bin</div>
-                        <div class="tree-node child">📂 /usr</div>
-                        <div class="tree-node child">📂 /tmp</div>
-                        <div class="tree-node child">📄 kernel.sys</div>
-                        <div class="tree-node child">📄 init.conf</div>
-                    </div>
-                </div>
-            </section>
+            <!-- RIGHT COLUMN: SCHEDULING METRICS & SYSTEM LOG -->
+            <section class="col-right">
 
-            <!-- I/O DEVICES PANEL -->
-            <section class="panel io-panel" id="panel-io">
-                <div class="panel-header">
-                    <span class="panel-gear spinning-slow">⚙</span>
-                    <h2>Dispositivos E/S</h2>
-                    <span class="panel-gear spinning-slow reverse">⚙</span>
-                </div>
-                <div class="panel-content">
-                    <div class="device-list">
-                        <div class="device-item">
-                            <span class="device-icon">⌨</span>
-                            <span class="device-name">Teclado</span>
-                            <span class="device-status ok">OK</span>
-                        </div>
-                        <div class="device-item">
-                            <span class="device-icon">⊕</span>
-                            <span class="device-name">Ratón</span>
-                            <span class="device-status ok">OK</span>
-                        </div>
-                        <div class="device-item">
-                            <span class="device-icon">◉</span>
-                            <span class="device-name">Disco Duro</span>
-                            <span class="device-status ok">OK</span>
-                        </div>
-                        <div class="device-item">
-                            <span class="device-icon">⋈</span>
-                            <span class="device-name">Red</span>
-                            <span class="device-status warn">Inactivo</span>
+                <!-- METRICS PANEL -->
+                <div class="card panel-metrics" id="panel-metrics">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">📊</span>
+                            <h2>Métricas de Planificación</h2>
                         </div>
                     </div>
-                </div>
-            </section>
 
-            <!-- SYSTEM LOG -->
-            <section class="panel log-panel" id="panel-log">
-                <div class="panel-header">
-                    <span class="panel-gear spinning-slow">⚙</span>
-                    <h2>Log del Sistema</h2>
-                    <span class="panel-gear spinning-slow reverse">⚙</span>
-                </div>
-                <div class="panel-content">
-                    <div class="log-output" id="log-output"></div>
-                </div>
-            </section>
+                    <div class="card-body">
+                        <!-- Promedios KPI cards -->
+                        <div class="metrics-averages" id="metrics-averages" style="display:none">
+                            <div class="kpi-card kpi-waiting">
+                                <span class="kpi-label">Tiempo Espera Promedio</span>
+                                <strong class="kpi-value font-mono" id="avg-waiting">—</strong>
+                            </div>
+                            <div class="kpi-card kpi-turnaround">
+                                <span class="kpi-label">Tiempo Retorno (TAT) Promedio</span>
+                                <strong class="kpi-value font-mono" id="avg-turnaround">—</strong>
+                            </div>
+                        </div>
 
-            <!-- METRICS PANEL -->
-            <section class="panel metrics-panel" id="panel-metrics">
-                <div class="panel-header">
-                    <span class="panel-gear spinning-slow">⚙</span>
-                    <h2>Métricas de Planificación</h2>
-                    <span class="panel-gear spinning-slow reverse">⚙</span>
-                </div>
-                <div class="panel-content">
-                    <div class="metrics-scheduler-badge" id="metrics-scheduler-name">—</div>
-                    <div class="metrics-averages" id="metrics-averages" style="display:none">
-                        <div class="metric-avg">
-                            <span class="metric-avg-label">Avg. Waiting</span>
-                            <span class="metric-avg-val nixie small" id="avg-waiting">—</span>
-                        </div>
-                        <div class="metric-avg">
-                            <span class="metric-avg-label">Avg. Turnaround</span>
-                            <span class="metric-avg-val nixie small" id="avg-turnaround">—</span>
+                        <div class="metrics-table-wrapper">
+                            <table class="metrics-table" id="metrics-table">
+                                <thead>
+                                    <tr>
+                                        <th>PID</th>
+                                        <th>Nombre</th>
+                                        <th>Burst</th>
+                                        <th>Llegada</th>
+                                        <th>Inicio</th>
+                                        <th>Fin</th>
+                                        <th>Espera</th>
+                                        <th>TAT</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="metrics-tbody">
+                                    <tr>
+                                        <td colspan="8" class="metrics-empty">
+                                            No hay procesos terminados aún. Ejecuta ciclos para ver estadísticas de planificación.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
-                    <div class="metrics-table-wrapper">
-                        <table class="metrics-table" id="metrics-table">
-                            <thead>
-                                <tr>
-                                    <th>PID</th>
-                                    <th>Nombre</th>
-                                    <th>Burst</th>
-                                    <th>Llegada</th>
-                                    <th>Inicio</th>
-                                    <th>Fin</th>
-                                    <th>Espera</th>
-                                    <th>TAT</th>
-                                </tr>
-                            </thead>
-                            <tbody id="metrics-tbody">
-                                <tr><td colspan="8" class="metrics-empty">Sin procesos terminados</td></tr>
-                            </tbody>
-                        </table>
+                </div>
+
+                <!-- SYSTEM LOG PANEL -->
+                <div class="card panel-log" id="panel-log">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">📟</span>
+                            <h2>Consola del Sistema (Log)</h2>
+                        </div>
+                        <span class="live-dot" title="Tiempo real"></span>
+                    </div>
+                    <div class="card-body no-pad">
+                        <div class="terminal-log-output font-mono" id="log-output"></div>
                     </div>
                 </div>
+
             </section>
 
         </main>
-
-        <!-- FOOTER CONTROLS -->
-        <footer class="control-bar">
-            <div class="control-bar__inner">
-                <button class="btn btn-success" id="btn-start">▶ Iniciar SO</button>
-                <button class="btn btn-danger" id="btn-stop" disabled>■ Detener</button>
-                <button class="btn btn-secondary" id="btn-restart" disabled>↺ Reiniciar</button>
-                <button class="btn btn-accent" id="btn-tick">⏩ Avanzar Ciclo</button>
-
-                <div class="scheduler-control">
-                    <label for="scheduler-select" class="scheduler-label">⚙ Planificador</label>
-                    <select id="scheduler-select" class="form-input scheduler-select">
-                        <option value="fcfs">FCFS — First Come, First Served</option>
-                        <option value="sjf">SJF — Shortest Job First</option>
-                        <option value="round_robin">Round Robin</option>
-                        <option value="prioridad">Por Prioridad</option>
-                        <option value="colas_multiples">Colas Múltiples</option>
-                        <option value="garantizado">Planificación Garantizada</option>
-                        <option value="dos_niveles">Dos Niveles</option>
-                    </select>
-                    <div id="quantum-control" class="quantum-control" style="display:none">
-                        <label for="quantum-input" class="scheduler-label">Quantum</label>
-                        <input type="number" id="quantum-input" class="form-input quantum-input" value="2" min="1" max="20">
-                    </div>
-                    <button class="btn btn-secondary" id="btn-apply-scheduler">Aplicar</button>
-                </div>
-            </div>
-        </footer>
 
     </div>
 
     <!-- NEW PROCESS MODAL -->
     <div class="modal-overlay" id="modal-process" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal-panel">
-            <div class="panel-header">
-                <span class="panel-gear spinning-slow">⚙</span>
-                <h3 id="modal-title">Nuevo Proceso</h3>
-                <span class="panel-gear spinning-slow reverse">⚙</span>
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <span class="modal-icon">⚡</span>
+                    <h3 id="modal-title">Crear Nuevo Proceso</h3>
+                </div>
+                <button class="btn-close-modal" id="btn-modal-cancel" aria-label="Cerrar">✕</button>
             </div>
+
             <div class="modal-content">
-                <label for="input-process-name" class="form-label">Nombre del Proceso</label>
-                <input type="text" id="input-process-name" class="form-input" placeholder="ej. calc.exe" maxlength="24">
+                <div class="form-group">
+                    <label for="input-process-name" class="form-label">Nombre del Proceso</label>
+                    <input type="text" id="input-process-name" class="form-input" placeholder="ej. navegador.exe" maxlength="24">
+                </div>
+
                 <div class="form-row-2">
-                    <div>
-                        <label for="input-process-mem" class="form-label">Memoria (MB)</label>
+                    <div class="form-group">
+                        <label for="input-process-mem" class="form-label">Memoria Requerida (MB)</label>
                         <input type="number" id="input-process-mem" class="form-input" value="128" min="1" max="2048">
                     </div>
-                    <div>
-                        <label for="input-process-burst" class="form-label">Ráfaga CPU (ciclos)</label>
+                    <div class="form-group">
+                        <label for="input-process-burst" class="form-label">Ráfaga CPU (Ciclos necesarios)</label>
                         <input type="number" id="input-process-burst" class="form-input" value="5" min="1" max="100">
                     </div>
                 </div>
-                <div class="form-row-2">
-                    <div>
-                        <label for="input-process-priority" class="form-label">Prioridad</label>
-                        <select id="input-process-priority" class="form-input">
-                            <option value="alta">Alta</option>
-                            <option value="media" selected>Media</option>
-                            <option value="baja">Baja</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="input-process-nice" class="form-label">Nice value (-20 urgente → +19)</label>
-                        <input type="number" id="input-process-nice" class="form-input" value="0" min="-20" max="19">
-                    </div>
+
+                <div class="form-group">
+                    <label for="input-process-nice" class="form-label">Prioridad Nice Value (de -20 más prioritario a +19 menor prioridad)</label>
+                    <input type="number" id="input-process-nice" class="form-input" value="0" min="-20" max="19">
                 </div>
             </div>
+
             <div class="modal-actions">
-                <button class="btn btn-secondary" id="btn-modal-cancel">Cancelar</button>
+                <button class="btn btn-secondary" id="btn-modal-cancel-btn">Cancelar</button>
                 <button class="btn btn-primary" id="btn-modal-confirm">Encolar Proceso</button>
             </div>
         </div>

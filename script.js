@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════
-   AETHELRED OS — Frontend Client
+   HEPHAESTUS CORE — Frontend Client
    Conectado al backend Python (Flask) via REST API.
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -60,7 +60,6 @@ const dom = {
     inputName:     $('input-process-name'),
     inputMem:      $('input-process-mem'),
     inputBurst:    $('input-process-burst'),
-    inputPrio:     $('input-process-priority'),
     inputNice:     $('input-process-nice'),
     btnModalOk:    $('btn-modal-confirm'),
     btnModalCx:    $('btn-modal-cancel'),
@@ -135,9 +134,13 @@ const LEVEL_MAP = { 'OK': 'ok', 'WARN': 'warn', 'ERR': 'err', 'SYS': 'sys', 'INF
 // ─── CPU GAUGE ────────────────────────────────────────────────────────
 function updateCpuGauge(pct) {
     pct = Math.max(0, Math.min(100, pct));
-    const angle = -135 + (pct / 100) * 270;
-    dom.cpuNeedle.setAttribute('transform', `rotate(${angle}, 100, 100)`);
-    dom.cpuUsage.textContent = `${Math.round(pct)}%`;
+    const circle = $('cpu-ring-fill');
+    if (circle) {
+        const circumference = 389.56; // 2 * PI * 62
+        const offset = circumference - (pct / 100) * circumference;
+        circle.style.strokeDashoffset = offset;
+    }
+    if (dom.cpuUsage) dom.cpuUsage.textContent = `${Math.round(pct)}%`;
 }
 
 // ─── MEMORIA ──────────────────────────────────────────────────────────
@@ -173,6 +176,7 @@ function updateMemory(memData) {
     dom.memAvail.textContent = `${disponible_mb} MB`;
     dom.memUsage.textContent = `${Math.round(uso_pct)}%`;
 
+    dom.memLiquidFill.style.width = `${uso_pct}%`;
     dom.memLiquidFill.style.setProperty('--pb-liquid-level', `${uso_pct}%`);
     dom.memLiquidPct.textContent = `${Math.round(uso_pct)}%`;
     dom.memLiquid.setAttribute('aria-valuenow', Math.round(uso_pct));
@@ -231,7 +235,8 @@ function renderProcessList(procesos) {
             }
         } else {
             const el = document.createElement('div');
-            el.className   = `process-item process-item--new ${PRIORITY_CLASS[proc.prioridad] || 'priority-media'}`;
+            const niceClass = (proc.nice_value < 0) ? 'priority-alta' : (proc.nice_value > 0 ? 'priority-baja' : 'priority-media');
+            el.className   = `process-item process-item--new ${niceClass}`;
             el.dataset.pid = proc.pid;
             el.innerHTML = `
                 <span class="proc-id">PID ${proc.pid}</span>
@@ -435,7 +440,6 @@ function openModal() {
     if (dom.inputName)  dom.inputName.value  = '';
     if (dom.inputMem)   dom.inputMem.value   = '128';
     if (dom.inputBurst) dom.inputBurst.value = '5';
-    if (dom.inputPrio)  dom.inputPrio.value  = 'media';
     if (dom.inputNice)  dom.inputNice.value  = '0';
     dom.modal.classList.add('active');
     if (dom.inputName) dom.inputName.focus();
@@ -449,7 +453,6 @@ async function confirmNewProcess() {
     const nombre    = dom.inputName ? dom.inputName.value.trim() : '';
     const memoria   = parseInt(dom.inputMem ? dom.inputMem.value : '128', 10) || 128;
     const burst     = parseInt(dom.inputBurst ? dom.inputBurst.value : '5', 10) || 5;
-    const prioridad = dom.inputPrio ? dom.inputPrio.value : 'media';
     const nice      = parseInt(dom.inputNice ? dom.inputNice.value : '0', 10) || 0;
     const finalNombre = nombre || `proceso_${Date.now()}`;
 
@@ -459,7 +462,6 @@ async function confirmNewProcess() {
     const res = await apiPost('/process', {
         nombre:     finalNombre,
         memoria_mb: memoria,
-        prioridad,
         burst_time: burst,
         nice_value: nice,
     });
@@ -482,7 +484,10 @@ dom.btnTick.addEventListener('click',    handleTick);
 dom.btnNewProc.addEventListener('click', openModal);
 dom.btnModalOk.addEventListener('click', confirmNewProcess);
 dom.btnModalCx.addEventListener('click', closeModal);
+const btnModalCancelAlt = $('btn-modal-cancel-btn');
+if (btnModalCancelAlt) btnModalCancelAlt.addEventListener('click', closeModal);
 dom.modal.addEventListener('click', e => { if (e.target === dom.modal) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && dom.modal.classList.contains('active')) closeModal(); });
 dom.processList.addEventListener('click', e => {
     const btn = e.target.closest('.proc-kill');
     if (btn) killProcess(parseInt(btn.dataset.pid, 10));

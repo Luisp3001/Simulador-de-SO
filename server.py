@@ -24,7 +24,6 @@ from flask_cors import CORS
 sys.path.insert(0, os.path.dirname(__file__))
 
 from os_simulator.core.kernel import Kernel
-from os_simulator.processes.process import PrioridadProceso
 from os_simulator.processes.schedulers import SCHEDULERS_DISPONIBLES
 
 # ══════════════════════════════════════════════════════════════════════
@@ -42,14 +41,7 @@ CORS(app)
 # ══════════════════════════════════════════════════════════════════════
 # Kernel singleton — un solo kernel para toda la sesión del servidor
 # ══════════════════════════════════════════════════════════════════════
-kernel: Kernel = Kernel(nombre="Aethelred OS", version="0.1.0", ram_mb=4096)
-
-# Mapa de nombre → PrioridadProceso
-_PRIORIDADES: dict[str, PrioridadProceso] = {
-    "alta":  PrioridadProceso.ALTA,
-    "media": PrioridadProceso.MEDIA,
-    "baja":  PrioridadProceso.BAJA,
-}
+kernel: Kernel = Kernel(nombre="Hephaestus Core", version="0.1.0", ram_mb=4096)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -192,18 +184,13 @@ def api_create_process():
         {
           "nombre":     "calc.exe",
           "memoria_mb": 128,
-          "prioridad":  "media",    // "alta" | "media" | "baja"
           "burst_time": 5,          // ciclos de CPU requeridos
-          "nice_value": 0           // prioridad numérica (-20 a +19)
+          "nice_value": 0           // prioridad numérica (-20 urgente a +19)
         }
     """
     data = request.get_json(silent=True) or {}
     nombre     = data.get("nombre", "proceso")
     memoria    = int(data.get("memoria_mb", 128))
-    prioridad  = _PRIORIDADES.get(
-        str(data.get("prioridad", "media")).lower(),
-        PrioridadProceso.MEDIA,
-    )
     burst_time = max(1, int(data.get("burst_time", 5)))
     nice_value = int(data.get("nice_value", 0))
 
@@ -213,7 +200,6 @@ def api_create_process():
     proceso = kernel.crear_proceso(
         nombre,
         memoria_mb=memoria,
-        prioridad=prioridad,
         burst_time=burst_time,
         nice_value=nice_value,
     )
@@ -226,7 +212,6 @@ def api_create_process():
             "nombre":     proceso.nombre,
             "estado":     proceso.estado.name,
             "memoria":    proceso.memoria_requerida,
-            "prioridad":  proceso.prioridad.name,
             "burst_time": proceso.burst_time,
             "nice_value": proceso.nice_value,
         },
@@ -261,7 +246,6 @@ def api_state():
             "pid":           p.pid,
             "nombre":        p.nombre,
             "estado":        "EJECUTANDO",
-            "prioridad":     p.prioridad.name,
             "memoria":       p.memoria_requerida,
             "burst_time":    p.burst_time,
             "remaining_time": p.remaining_time,
@@ -273,7 +257,6 @@ def api_state():
             "pid":           p_data["pid"],
             "nombre":        p_data["nombre"],
             "estado":        p_data["estado"],
-            "prioridad":     p_data["prioridad"],
             "memoria":       p_data["memoria"],
             "burst_time":    p_data["burst_time"],
             "remaining_time": p_data["remaining_time"],
@@ -316,7 +299,7 @@ def api_log():
 # ══════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     print("╔══════════════════════════════════════════╗")
-    print("║   Aethelred OS — Servidor Flask           ║")
+    print("║   Hephaestus Core — Servidor Flask       ║")
     print("║   http://localhost:5000                   ║")
     print("╚══════════════════════════════════════════╝")
     app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)

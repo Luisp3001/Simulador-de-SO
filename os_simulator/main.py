@@ -1,22 +1,15 @@
 """
 main.py
-=======
-Punto de entrada del Simulador de Sistema Operativo — Aethelred OS.
+os_simulator/main.py
+====================
+Punto de entrada del Simulador de Sistema Operativo — Hephaestus Core.
+Demuestra el ciclo de vida completo del sistema operativo simulado.
 
-Demuestra el uso de todos los módulos del sistema:
-  - Arranque del Kernel
-  - Creación y ejecución de procesos
-  - Consulta del estado de la memoria
-  - Interacción con dispositivos de E/S
-  - Operaciones en el sistema de archivos
-  - Log del sistema
-
-Ejecutar con:
+Uso:
     python main.py
 """
 
 from os_simulator.core.kernel import Kernel
-from os_simulator.processes.process import PrioridadProceso
 from os_simulator.hardware.device import Disco
 
 
@@ -32,8 +25,8 @@ def separador(titulo: str = "") -> None:
 
 def main() -> None:
     # ── 1. Crear e inicializar el Kernel ─────────────────────────────────
-    separador("AETHELRED OS — Demo de inicio")
-    kernel = Kernel(nombre="Aethelred OS", version="0.1.0", ram_mb=4096)
+    separador("HEPHAESTUS CORE — Demo de inicio")
+    kernel = Kernel(nombre="Hephaestus Core", version="0.1.0", ram_mb=4096)
     kernel.arrancar()
 
     for entrada in kernel.ultimo_log(6):
@@ -41,10 +34,10 @@ def main() -> None:
 
     # ── 2. Crear procesos con distintas prioridades ───────────────────────
     separador("Creando procesos")
-    p1 = kernel.crear_proceso("sistema_base",   memoria_mb=256,  prioridad=PrioridadProceso.ALTA)
-    p2 = kernel.crear_proceso("editor_texto",   memoria_mb=128,  prioridad=PrioridadProceso.MEDIA)
-    p3 = kernel.crear_proceso("reproductor_mp3",memoria_mb=96,   prioridad=PrioridadProceso.BAJA)
-    p4 = kernel.crear_proceso("compilador",     memoria_mb=512,  prioridad=PrioridadProceso.ALTA)
+    p1 = kernel.crear_proceso("sistema_base",   memoria_mb=256,  burst_time=4, nice_value=-5)
+    p2 = kernel.crear_proceso("editor_texto",   memoria_mb=128,  burst_time=3, nice_value=0)
+    p3 = kernel.crear_proceso("reproductor_mp3",memoria_mb=96,   burst_time=6, nice_value=5)
+    p4 = kernel.crear_proceso("compilador",     memoria_mb=512,  burst_time=8, nice_value=-2)
 
     for entrada in kernel.ultimo_log(4):
         print(entrada)
@@ -85,7 +78,7 @@ def main() -> None:
 
     # Crear estructura de usuario
     fs.crear_directorio("usr", "local")
-    fs.crear_archivo("usr/local", "readme.txt", "# Aethelred OS\nBienvenido al simulador.\n")
+    fs.crear_archivo("usr/local", "readme.txt", "# Hephaestus Core\nBienvenido al simulador.\n")
     fs.crear_archivo("tmp", "sesion.log", "Sesión iniciada.\n")
 
     # Leer un archivo

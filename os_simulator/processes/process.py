@@ -37,10 +37,9 @@ class Proceso:
     Attributes:
         pid (int): Identificador único del proceso.
         nombre (str): Nombre descriptivo del proceso.
-        prioridad (PrioridadProceso): Prioridad de planificación (enum legacy).
         memoria_requerida (int): Memoria en MB que necesita el proceso.
         burst_time (int): Ráfaga total de CPU necesaria (en ciclos).
-        nice_value (int): Prioridad numérica Unix-style. Menor = más urgente.
+        nice_value (int): Prioridad numérica Unix-style (-20 a +19). Menor = más prioritario.
         arrival_time (int): Ciclo del kernel en que fue creado/admitido.
         queue_level (int): Nivel de cola para planificación de colas múltiples.
     """
@@ -52,7 +51,6 @@ class Proceso:
         self,
         nombre: str,
         memoria_requerida: int = 128,
-        prioridad: PrioridadProceso = PrioridadProceso.MEDIA,
         burst_time: int = 5,
         nice_value: int = 0,
         arrival_time: int = 0,
@@ -63,12 +61,11 @@ class Proceso:
 
         self._nombre: str = nombre
         self._estado: EstadoProceso = EstadoProceso.NUEVO
-        self._prioridad: PrioridadProceso = prioridad
         self._memoria_requerida: int = memoria_requerida
 
         # ── Campos de planificación ───────────────────────────────────────
         self._burst_time: int = max(1, burst_time)       # ráfaga total en ciclos
-        self._nice_value: int = nice_value               # prioridad numérica
+        self._nice_value: int = nice_value               # prioridad numérica (-20 a +19)
         self._arrival_time: int = arrival_time           # ciclo de llegada al sistema
         self._queue_level: int = queue_level             # nivel de cola (colas múltiples)
 
@@ -99,10 +96,6 @@ class Proceso:
     @property
     def estado(self) -> EstadoProceso:
         return self._estado
-
-    @property
-    def prioridad(self) -> PrioridadProceso:
-        return self._prioridad
 
     @property
     def memoria_requerida(self) -> int:

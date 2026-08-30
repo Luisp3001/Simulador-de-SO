@@ -128,9 +128,8 @@ class SchedulerRoundRobin(SchedulerBase):
     """
     Round Robin (RR) — preemptivo.
 
-    Selecciona el proceso que lleva más tiempo esperando en cola
-    (orden FIFO dentro del quantum). El Kernel lo interrumpe al
-    consumir el quantum y lo re-encola al final.
+    Selecciona el proceso al frente de la cola de listos (orden FIFO).
+    El Kernel lo interrumpe al consumir el quantum y lo re-encola al final.
     """
 
     def __init__(self, quantum: int = 2) -> None:
@@ -149,10 +148,10 @@ class SchedulerRoundRobin(SchedulerBase):
         return self._quantum
 
     def seleccionar_siguiente(self, cola: list[Proceso]) -> Optional[Proceso]:
-        """Selecciona el proceso que lleva más tiempo en la cola (FIFO)."""
+        """Selecciona el primer proceso en la cola (FIFO)."""
         if not cola:
             return None
-        return min(cola, key=lambda p: (p.arrival_time, p.pid))
+        return cola[0]
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -234,11 +233,15 @@ class SchedulerColasMultiples(SchedulerBase):
     def seleccionar_siguiente(self, cola: list[Proceso]) -> Optional[Proceso]:
         """
         Selecciona el proceso de mayor prioridad (menor queue_level).
-        Dentro del mismo nivel, desempata por arrival_time y PID.
+        Dentro del mismo nivel, selecciona en orden FIFO.
         """
         if not cola:
             return None
-        return min(cola, key=lambda p: (p.queue_level, p.arrival_time, p.pid))
+        min_nivel = min(p.queue_level for p in cola)
+        for p in cola:
+            if p.queue_level == min_nivel:
+                return p
+        return cola[0]
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -314,7 +317,7 @@ class SchedulerDosNiveles(SchedulerBase):
     - El grupo ACTIVO (queue_level == 0) se planifica con Round Robin interno.
     - El grupo SUSPENDIDO (queue_level == 1) espera ser promovido.
     - Cuando el grupo activo se vacía, el Kernel promueve los siguientes
-      procesos del grupo suspendido (el Kernel llama a promover_suspendidos()).
+      procesos del grupo suspendido.
     - El tamaño máximo del grupo activo es configurable (default=3 procesos).
     """
 
@@ -346,17 +349,17 @@ class SchedulerDosNiveles(SchedulerBase):
         if not cola:
             return None
 
-        activos    = [p for p in cola if p.queue_level == 0]
-        suspendidos = [p for p in cola if p.queue_level == 1]
-
-        if activos:
-            return min(activos, key=lambda p: (p.arrival_time, p.pid))
+        for p in cola:
+            if p.queue_level == 0:
+                return p
 
         # No hay activos: promover el primer suspendido
-        if suspendidos:
-            candidato = min(suspendidos, key=lambda p: (p.arrival_time, p.pid))
-            candidato.queue_level = 0
-            return candidato
+        for p in cola:
+            if p.queue_level == 1:
+                p.queue_level = 0
+                return p
+
+        return cola[0]
 
         return None
 

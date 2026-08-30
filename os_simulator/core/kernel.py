@@ -21,7 +21,7 @@ from typing import Optional
 
 from os_simulator.core.cpu import CPU
 from os_simulator.memory.memory import Memoria
-from os_simulator.processes.process import Proceso, EstadoProceso, PrioridadProceso
+from os_simulator.processes.process import Proceso, EstadoProceso
 from os_simulator.processes.schedulers import (
     SchedulerBase,
     SchedulerFCFS,
@@ -58,13 +58,13 @@ class Kernel:
     en tiempo real mediante el patrón Strategy.
 
     Attributes:
-        nombre (str): Nombre del SO (por defecto 'Aethelred OS').
+        nombre (str): Nombre del SO (por defecto 'Hephaestus Core').
         version (str): Versión del SO.
     """
 
     def __init__(
         self,
-        nombre: str = "Aethelred OS",
+        nombre: str = "Hephaestus Core",
         version: str = "0.1.0",
         ram_mb: int = 4096,
     ) -> None:
@@ -230,7 +230,6 @@ class Kernel:
         self,
         nombre: str,
         memoria_mb: int = 128,
-        prioridad: PrioridadProceso = PrioridadProceso.MEDIA,
         burst_time: int = 5,
         nice_value: int = 0,
     ) -> Optional[Proceso]:
@@ -240,9 +239,8 @@ class Kernel:
         Args:
             nombre: Nombre del proceso.
             memoria_mb: Memoria requerida en MB.
-            prioridad: Prioridad de planificación (enum legacy, se mantiene).
             burst_time: Ráfaga de CPU necesaria en ciclos (default 5).
-            nice_value: Prioridad numérica Unix-style (default 0).
+            nice_value: Prioridad numérica Unix-style (default 0, menor = más prioritario).
 
         Returns:
             El proceso creado, o None si no hay recursos suficientes.
@@ -254,7 +252,6 @@ class Kernel:
         proceso = Proceso(
             nombre,
             memoria_requerida=memoria_mb,
-            prioridad=prioridad,
             burst_time=burst_time,
             nice_value=nice_value,
             arrival_time=self._ciclo_reloj,
@@ -505,7 +502,6 @@ class Kernel:
                 "pid":             p.pid,
                 "nombre":          p.nombre,
                 "estado":          estado_override or p.estado.name,
-                "prioridad":       p.prioridad.name,
                 "nice_value":      p.nice_value,
                 "memoria":         p.memoria_requerida,
                 "burst_time":      p.burst_time,
