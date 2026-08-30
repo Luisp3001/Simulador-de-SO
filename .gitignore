@@ -1,10 +1,2 @@
 .venv/
-os_simulator/__pycache__/
-os_simulator/core/__pycache__/
-os_simulator/memory/__pycache__/
-os_simulator/processes/__pycache__/
-os_simulator/devices/__pycache__/
-os_simulator/filesystem/__pycache__/
-os_simulator/__pycache__/
-os_simulator/__pycache__/
-os_simulator/__pycache__/
+__pycache__/
