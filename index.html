@@ -270,6 +270,47 @@
                 </div>
             </section>
 
+            <!-- METRICS PANEL -->
+            <section class="panel metrics-panel" id="panel-metrics">
+                <div class="panel-header">
+                    <span class="panel-gear spinning-slow">⚙</span>
+                    <h2>Métricas de Planificación</h2>
+                    <span class="panel-gear spinning-slow reverse">⚙</span>
+                </div>
+                <div class="panel-content">
+                    <div class="metrics-scheduler-badge" id="metrics-scheduler-name">—</div>
+                    <div class="metrics-averages" id="metrics-averages" style="display:none">
+                        <div class="metric-avg">
+                            <span class="metric-avg-label">Avg. Waiting</span>
+                            <span class="metric-avg-val nixie small" id="avg-waiting">—</span>
+                        </div>
+                        <div class="metric-avg">
+                            <span class="metric-avg-label">Avg. Turnaround</span>
+                            <span class="metric-avg-val nixie small" id="avg-turnaround">—</span>
+                        </div>
+                    </div>
+                    <div class="metrics-table-wrapper">
+                        <table class="metrics-table" id="metrics-table">
+                            <thead>
+                                <tr>
+                                    <th>PID</th>
+                                    <th>Nombre</th>
+                                    <th>Burst</th>
+                                    <th>Llegada</th>
+                                    <th>Inicio</th>
+                                    <th>Fin</th>
+                                    <th>Espera</th>
+                                    <th>TAT</th>
+                                </tr>
+                            </thead>
+                            <tbody id="metrics-tbody">
+                                <tr><td colspan="8" class="metrics-empty">Sin procesos terminados</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
         </main>
 
         <!-- FOOTER CONTROLS -->
@@ -279,7 +320,24 @@
                 <button class="btn btn-danger" id="btn-stop" disabled>■ Detener</button>
                 <button class="btn btn-secondary" id="btn-restart" disabled>↺ Reiniciar</button>
                 <button class="btn btn-accent" id="btn-tick">⏩ Avanzar Ciclo</button>
-                <button class="btn btn-secondary" id="btn-config">⚙ Configuración</button>
+
+                <div class="scheduler-control">
+                    <label for="scheduler-select" class="scheduler-label">⚙ Planificador</label>
+                    <select id="scheduler-select" class="form-input scheduler-select">
+                        <option value="fcfs">FCFS — First Come, First Served</option>
+                        <option value="sjf">SJF — Shortest Job First</option>
+                        <option value="round_robin">Round Robin</option>
+                        <option value="prioridad">Por Prioridad</option>
+                        <option value="colas_multiples">Colas Múltiples</option>
+                        <option value="garantizado">Planificación Garantizada</option>
+                        <option value="dos_niveles">Dos Niveles</option>
+                    </select>
+                    <div id="quantum-control" class="quantum-control" style="display:none">
+                        <label for="quantum-input" class="scheduler-label">Quantum</label>
+                        <input type="number" id="quantum-input" class="form-input quantum-input" value="2" min="1" max="20">
+                    </div>
+                    <button class="btn btn-secondary" id="btn-apply-scheduler">Aplicar</button>
+                </div>
             </div>
         </footer>
 
@@ -296,14 +354,30 @@
             <div class="modal-content">
                 <label for="input-process-name" class="form-label">Nombre del Proceso</label>
                 <input type="text" id="input-process-name" class="form-input" placeholder="ej. calc.exe" maxlength="24">
-                <label for="input-process-mem" class="form-label">Memoria requerida (MB)</label>
-                <input type="number" id="input-process-mem" class="form-input" value="128" min="1" max="2048">
-                <label for="input-process-priority" class="form-label">Prioridad</label>
-                <select id="input-process-priority" class="form-input">
-                    <option value="alta">Alta</option>
-                    <option value="media" selected>Media</option>
-                    <option value="baja">Baja</option>
-                </select>
+                <div class="form-row-2">
+                    <div>
+                        <label for="input-process-mem" class="form-label">Memoria (MB)</label>
+                        <input type="number" id="input-process-mem" class="form-input" value="128" min="1" max="2048">
+                    </div>
+                    <div>
+                        <label for="input-process-burst" class="form-label">Ráfaga CPU (ciclos)</label>
+                        <input type="number" id="input-process-burst" class="form-input" value="5" min="1" max="100">
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div>
+                        <label for="input-process-priority" class="form-label">Prioridad</label>
+                        <select id="input-process-priority" class="form-input">
+                            <option value="alta">Alta</option>
+                            <option value="media" selected>Media</option>
+                            <option value="baja">Baja</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="input-process-nice" class="form-label">Nice value (-20 urgente → +19)</label>
+                        <input type="number" id="input-process-nice" class="form-input" value="0" min="-20" max="19">
+                    </div>
+                </div>
             </div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" id="btn-modal-cancel">Cancelar</button>

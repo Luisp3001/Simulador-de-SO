@@ -11,6 +11,7 @@ Principios OOP aplicados:
     - Fachada (Facade): provee una interfaz unificada a todos los subsistemas.
     - Composición: el Kernel contiene instancias de CPU, Memoria, etc.
     - Encapsulamiento: los subsistemas no se acceden directamente desde fuera.
+    - Strategy: el algoritmo de planificación es intercambiable en tiempo real.
 """
 
 from __future__ import annotations
@@ -21,6 +22,16 @@ from typing import Optional
 from os_simulator.core.cpu import CPU
 from os_simulator.memory.memory import Memoria
 from os_simulator.processes.process import Proceso, EstadoProceso, PrioridadProceso
+from os_simulator.processes.schedulers import (
+    SchedulerBase,
+    SchedulerFCFS,
+    SchedulerColasMultiples,
+    SchedulerDosNiveles,
+    SchedulerGarantizado,
+    SchedulerPrioridad,
+    crear_scheduler,
+    SCHEDULERS_DISPONIBLES,
+)
 from os_simulator.hardware.device import Dispositivo, Teclado, Disco, DispositivoRed
 from os_simulator.filesystem.filesystem import SistemaArchivos
 
@@ -43,8 +54,8 @@ class Kernel:
     Núcleo del sistema operativo simulado.
 
     Orquesta todos los subsistemas: CPU, Memoria, Dispositivos y
-    Sistema de Archivos. Implementa un planificador Round-Robin simple
-    y mantiene el registro de eventos del sistema.
+    Sistema de Archivos. El algoritmo de planificación es intercambiable
+    en tiempo real mediante el patrón Strategy.
 
     Attributes:
         nombre (str): Nombre del SO (por defecto 'Aethelred OS').
@@ -71,10 +82,14 @@ class Kernel:
         self._dispositivos: dict[str, Dispositivo] = {}
         self._registrar_dispositivos_base()
 
-        # ── Cola de procesos (planificación FIFO / por prioridad) ─────────
-        # Usamos una deque por prioridad: alta → media → baja
+        # ── Planificación ────────────────────────────────────────────────
+        self._scheduler: SchedulerBase = SchedulerFCFS()
+        # Cola de procesos listos (deque; el orden real lo impone el scheduler)
         self._cola_procesos: deque[Proceso] = deque()
         self._procesos_terminados: list[Proceso] = []
+
+        # Contador de ciclos que el proceso actual lleva en la CPU (para quantum)
+        self._ciclos_en_cpu: int = 0
 
         # ── Log del sistema ───────────────────────────────────────────────
         self._log: list[EntradaLog] = []
@@ -127,6 +142,16 @@ class Kernel:
         return list(self._cola_procesos)
 
     @property
+    def procesos_terminados(self) -> list[Proceso]:
+        """Lista de procesos completados/finalizados (copia de solo lectura)."""
+        return list(self._procesos_terminados)
+
+    @property
+    def scheduler(self) -> SchedulerBase:
+        """Algoritmo de planificación actualmente activo."""
+        return self._scheduler
+
+    @property
     def log(self) -> list[EntradaLog]:
         """Historial completo del log del sistema."""
         return list(self._log)
@@ -148,6 +173,9 @@ class Kernel:
         self._registrar_log(f"RAM disponible: {self._memoria.memoria_disponible} MB.", "OK")
         self._registrar_log(f"CPU: {self._cpu.velocidad_mhz} MHz inicializada.", "OK")
         self._registrar_log("Sistema de archivos montado.", "OK")
+        self._registrar_log(
+            f"Planificador activo: {self._scheduler.nombre}.", "OK"
+        )
         self._registrar_log("Sistema listo.", "OK")
 
     def detener(self) -> None:
@@ -163,6 +191,7 @@ class Kernel:
             proceso.terminar()
             self._memoria.liberar(proceso.pid)
         self._cola_procesos.clear()
+        self._ciclos_en_cpu = 0
         self._activo = False
         self._registrar_log("Kernel detenido. Todos los recursos liberados.", "WARN")
 
@@ -175,6 +204,26 @@ class Kernel:
         self._procesos_terminados.clear()
         self.arrancar()
 
+    # ── Planificador ─────────────────────────────────────────────────────
+
+    def cambiar_scheduler(self, tipo: str, **kwargs) -> None:
+        """
+        Intercambia el algoritmo de planificación en tiempo de ejecución.
+
+        Args:
+            tipo: Clave del algoritmo. Ver SCHEDULERS_DISPONIBLES.
+            **kwargs: Parámetros opcionales (quantum, max_activos, etc.).
+
+        Raises:
+            ValueError: Si el tipo no es reconocido.
+        """
+        nuevo = crear_scheduler(tipo, **kwargs)
+        self._scheduler = nuevo
+        self._ciclos_en_cpu = 0  # reset del quantum counter
+        self._registrar_log(
+            f"Planificador cambiado a: {nuevo.nombre}.", "OK"
+        )
+
     # ── Gestión de procesos ───────────────────────────────────────────────
 
     def crear_proceso(
@@ -182,6 +231,8 @@ class Kernel:
         nombre: str,
         memoria_mb: int = 128,
         prioridad: PrioridadProceso = PrioridadProceso.MEDIA,
+        burst_time: int = 5,
+        nice_value: int = 0,
     ) -> Optional[Proceso]:
         """
         Crea un proceso, le asigna memoria y lo encola para ejecución.
@@ -189,7 +240,9 @@ class Kernel:
         Args:
             nombre: Nombre del proceso.
             memoria_mb: Memoria requerida en MB.
-            prioridad: Prioridad de planificación.
+            prioridad: Prioridad de planificación (enum legacy, se mantiene).
+            burst_time: Ráfaga de CPU necesaria en ciclos (default 5).
+            nice_value: Prioridad numérica Unix-style (default 0).
 
         Returns:
             El proceso creado, o None si no hay recursos suficientes.
@@ -198,7 +251,14 @@ class Kernel:
             self._registrar_log("Error: kernel inactivo. No se puede crear proceso.", "ERR")
             return None
 
-        proceso = Proceso(nombre, memoria_mb, prioridad)
+        proceso = Proceso(
+            nombre,
+            memoria_requerida=memoria_mb,
+            prioridad=prioridad,
+            burst_time=burst_time,
+            nice_value=nice_value,
+            arrival_time=self._ciclo_reloj,
+        )
 
         if not self._memoria.asignar(proceso.pid, memoria_mb):
             self._registrar_log(
@@ -208,15 +268,20 @@ class Kernel:
 
         proceso.admitir()
 
-        # Insertar en cola según prioridad (Alta al frente)
-        if prioridad == PrioridadProceso.ALTA:
-            self._cola_procesos.appendleft(proceso)
-        else:
-            self._cola_procesos.append(proceso)
+        # Para planificación de dos niveles: clasificar al ingresar
+        if isinstance(self._scheduler, SchedulerDosNiveles):
+            cola_lista = list(self._cola_procesos)
+            activos = sum(1 for p in cola_lista if p.queue_level == 0)
+            if activos < self._scheduler.max_activos:
+                proceso.queue_level = 0
+            else:
+                proceso.queue_level = 1
+
+        self._cola_procesos.append(proceso)
 
         self._registrar_log(
             f"Proceso '{nombre}' [PID {proceso.pid}] encolado "
-            f"({memoria_mb} MB, prioridad {prioridad.name}).",
+            f"({memoria_mb} MB, burst={burst_time}, nice={nice_value}).",
             "OK",
         )
         return proceso
@@ -235,6 +300,7 @@ class Kernel:
             proceso.terminar()
             self._memoria.liberar(pid)
             self._procesos_terminados.append(proceso)
+            self._ciclos_en_cpu = 0
             self._registrar_log(f"Proceso [PID {pid}] terminado (forzado desde CPU).", "WARN")
             return True
 
@@ -257,10 +323,17 @@ class Kernel:
         """
         Avanza un ciclo del reloj del sistema.
 
-        Planificador Round-Robin simple:
-          1. Si la CPU está libre y hay procesos en cola → despachar el siguiente.
-          2. Ejecutar un ciclo en el proceso actual.
-          3. Si el proceso terminó → liberar recursos y despachar el siguiente.
+        Flujo para schedulers preemptivos:
+          1. Si el proceso actual agotó su quantum → interrumpir y re-encolar.
+          2. Si la CPU está libre y hay procesos → pedir al scheduler el siguiente.
+          3. Ejecutar un ciclo de CPU.
+          4. Si el proceso terminó → calcular métricas, liberar recursos.
+
+        Flujo adicional para Colas Múltiples:
+          - Al re-encolar por quantum: degradar el nivel de cola.
+
+        Flujo adicional para Planificación por Prioridad:
+          - Si hay en cola alguno con menor nice_value que el actual → interrumpir.
         """
         if not self._activo:
             self._registrar_log("Error: el kernel está inactivo.", "ERR")
@@ -269,27 +342,134 @@ class Kernel:
         self._ciclo_reloj += 1
         self._registrar_log(f"═══ Ciclo #{self._ciclo_reloj} ═══", "SYS")
 
-        # Despachar si CPU libre y hay procesos
-        if self._cpu.esta_libre and self._cola_procesos:
-            siguiente = self._cola_procesos.popleft()
-            self._cpu.despachar(siguiente, uso=20.0 + len(self._cola_procesos) * 10.0)
-            self._registrar_log(
-                f"CPU → '{siguiente.nombre}' [PID {siguiente.pid}].", "OK"
-            )
+        # ── 1. Verificar preempción ───────────────────────────────────────
+        if not self._cpu.esta_libre and self._scheduler.es_preemptivo:
+            self._verificar_preempcion()
 
-        # Ejecutar ciclo en la CPU
+        # ── 2. Despachar si CPU está libre ───────────────────────────────
+        if self._cpu.esta_libre and self._cola_procesos:
+            self._despachar_siguiente()
+
+        # ── 3. Ejecutar ciclo de CPU ──────────────────────────────────────
         if not self._cpu.esta_libre:
             proceso_actual = self._cpu.proceso_actual
+            self._ciclos_en_cpu += 1
             terminado = self._cpu.ejecutar_ciclo()
+
             if terminado:
+                # Calcular métricas de finalización
+                proceso_actual.registrar_metricas(self._ciclo_reloj)
                 self._memoria.liberar(proceso_actual.pid)
                 self._procesos_terminados.append(proceso_actual)
+                self._ciclos_en_cpu = 0
                 self._registrar_log(
-                    f"Proceso '{proceso_actual.nombre}' [PID {proceso_actual.pid}] completado.",
+                    f"Proceso '{proceso_actual.nombre}' [PID {proceso_actual.pid}] "
+                    f"completado — wait={proceso_actual.waiting_time} "
+                    f"TAT={proceso_actual.turnaround_time}.",
                     "OK",
                 )
         else:
             self._registrar_log("CPU inactiva — sin procesos en cola.", "INFO")
+
+    def _verificar_preempcion(self) -> None:
+        """
+        Comprueba si el proceso en CPU debe ser interrumpido
+        según las reglas del scheduler activo.
+        """
+        proceso_actual = self._cpu.proceso_actual
+
+        # ── Quantum agotado (Round Robin y Colas Múltiples) ───────────────
+        quantum_efectivo = self._scheduler.quantum
+
+        # Para Colas Múltiples, el quantum depende del nivel del proceso
+        if isinstance(self._scheduler, SchedulerColasMultiples):
+            quantum_efectivo = self._scheduler.quantum_para_nivel(proceso_actual.queue_level)
+
+        if quantum_efectivo > 0 and self._ciclos_en_cpu >= quantum_efectivo:
+            self._registrar_log(
+                f"Quantum agotado — '{proceso_actual.nombre}' [PID {proceso_actual.pid}] "
+                f"interrumpido tras {self._ciclos_en_cpu} ciclos.",
+                "INFO",
+            )
+            # Degradar nivel en Colas Múltiples
+            if isinstance(self._scheduler, SchedulerColasMultiples):
+                nivel_anterior = proceso_actual.queue_level
+                proceso_actual.queue_level = min(nivel_anterior + 1, 2)
+                if proceso_actual.queue_level != nivel_anterior:
+                    self._registrar_log(
+                        f"'{proceso_actual.nombre}' degradado a cola nivel {proceso_actual.queue_level}.",
+                        "INFO",
+                    )
+            self._cpu.interrumpir()
+            self._cola_procesos.append(proceso_actual)
+            self._ciclos_en_cpu = 0
+            return
+
+        # ── Preempción por prioridad ──────────────────────────────────────
+        if isinstance(self._scheduler, SchedulerPrioridad) and self._cola_procesos:
+            mejor_en_cola = min(self._cola_procesos, key=lambda p: p.nice_value)
+            if mejor_en_cola.nice_value < proceso_actual.nice_value:
+                self._registrar_log(
+                    f"Preempción por prioridad: '{mejor_en_cola.nombre}' "
+                    f"(nice={mejor_en_cola.nice_value}) desplaza a "
+                    f"'{proceso_actual.nombre}' (nice={proceso_actual.nice_value}).",
+                    "INFO",
+                )
+                self._cpu.interrumpir()
+                self._cola_procesos.append(proceso_actual)
+                self._ciclos_en_cpu = 0
+                return
+
+        # ── Preempción por cuota (Planificación Garantizada) ─────────────
+        if isinstance(self._scheduler, SchedulerGarantizado) and self._cola_procesos:
+            n_total = len(self._cola_procesos) + 1  # en cola + el que corre
+            cuota = self._ciclo_reloj / n_total if self._ciclo_reloj > 0 else 1
+            ratio_actual = proceso_actual.cpu_time_used / cuota if cuota > 0 else 0
+            mejor = self._scheduler.seleccionar_siguiente(
+                list(self._cola_procesos),
+                ciclo_actual=self._ciclo_reloj,
+                n_total=n_total,
+            )
+            if mejor is not None:
+                ratio_mejor = mejor.cpu_time_used / cuota if cuota > 0 else 0
+                if ratio_mejor < ratio_actual:
+                    self._registrar_log(
+                        f"Planif. Garantizada: cede CPU de "
+                        f"'{proceso_actual.nombre}' a '{mejor.nombre}'.",
+                        "INFO",
+                    )
+                    self._cpu.interrumpir()
+                    self._cola_procesos.append(proceso_actual)
+                    self._ciclos_en_cpu = 0
+
+    def _despachar_siguiente(self) -> None:
+        """Pide al scheduler el siguiente proceso y lo despacha en la CPU."""
+        cola_lista = list(self._cola_procesos)
+
+        # Planificación Garantizada necesita parámetros extra
+        if isinstance(self._scheduler, SchedulerGarantizado):
+            siguiente = self._scheduler.seleccionar_siguiente(
+                cola_lista,
+                ciclo_actual=self._ciclo_reloj,
+                n_total=len(cola_lista),
+            )
+        else:
+            siguiente = self._scheduler.seleccionar_siguiente(cola_lista)
+
+        if siguiente is None:
+            return
+
+        self._cola_procesos.remove(siguiente)
+        uso = 20.0 + len(self._cola_procesos) * 10.0
+        self._cpu.despachar(siguiente, uso=uso)
+        siguiente.despachar(ciclo_actual=self._ciclo_reloj)
+        self._ciclos_en_cpu = 0
+
+        self._registrar_log(
+            f"CPU → '{siguiente.nombre}' [PID {siguiente.pid}] "
+            f"(scheduler: {self._scheduler.nombre}).",
+            "OK",
+        )
 
     # ── Dispositivos ──────────────────────────────────────────────────────
 
@@ -320,12 +500,40 @@ class Kernel:
         Retorna un diccionario con el estado actual de todos los subsistemas.
         Útil para que la interfaz web/gráfica consulte datos.
         """
+        def _proc_dict(p: Proceso, estado_override: str | None = None) -> dict:
+            return {
+                "pid":             p.pid,
+                "nombre":          p.nombre,
+                "estado":          estado_override or p.estado.name,
+                "prioridad":       p.prioridad.name,
+                "nice_value":      p.nice_value,
+                "memoria":         p.memoria_requerida,
+                "burst_time":      p.burst_time,
+                "remaining_time":  p.remaining_time,
+                "queue_level":     p.queue_level,
+                "arrival_time":    p.arrival_time,
+                "start_time":      p.start_time,
+            }
+
+        procesos_en_cola = [_proc_dict(p) for p in self._cola_procesos]
+
+        procesos_terminados = [
+            {
+                **_proc_dict(p),
+                "completion_time":  p.completion_time,
+                "waiting_time":     p.waiting_time,
+                "turnaround_time":  p.turnaround_time,
+            }
+            for p in self._procesos_terminados
+        ]
+
         return {
             "kernel": {
-                "nombre":  self._nombre,
-                "version": self._version,
-                "activo":  self._activo,
-                "ciclo":   self._ciclo_reloj,
+                "nombre":    self._nombre,
+                "version":   self._version,
+                "activo":    self._activo,
+                "ciclo":     self._ciclo_reloj,
+                "scheduler": self._scheduler.nombre,
             },
             "cpu": {
                 "libre":          self._cpu.esta_libre,
@@ -335,6 +543,7 @@ class Kernel:
                 ),
                 "uso_porcentaje": self._cpu.uso_porcentaje,
                 "ciclos_totales": self._cpu.ciclos_totales,
+                "ciclos_en_cpu":  self._ciclos_en_cpu,
             },
             "memoria": {
                 "total_mb":      self._memoria.capacidad_total,
@@ -342,10 +551,8 @@ class Kernel:
                 "disponible_mb": self._memoria.memoria_disponible,
                 "uso_pct":       round(self._memoria.uso_porcentaje, 2),
             },
-            "procesos_en_cola": [
-                {"pid": p.pid, "nombre": p.nombre, "estado": p.estado.name}
-                for p in self._cola_procesos
-            ],
+            "procesos_en_cola":   procesos_en_cola,
+            "procesos_terminados": procesos_terminados,
             "dispositivos": {
                 k: {"nombre": d.nombre, "estado": d.estado.name}
                 for k, d in self._dispositivos.items()
@@ -359,5 +566,6 @@ class Kernel:
         return (
             f"Kernel('{self._nombre}' v{self._version}, {estado}, "
             f"ciclo={self._ciclo_reloj}, "
+            f"scheduler='{self._scheduler.nombre}', "
             f"procesos_en_cola={len(self._cola_procesos)})"
         )

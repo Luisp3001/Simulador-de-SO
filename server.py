@@ -5,6 +5,8 @@ Servidor Flask que expone el Kernel Python como API REST,
 y sirve el frontend (index.html, style.css, script.js).
 
 Ejecutar:
+    uv run python server.py
+    ó
     .venv/bin/python server.py
 
 Luego abrir:
@@ -19,11 +21,11 @@ from flask import Flask, jsonify, request, send_from_directory, abort
 from flask_cors import CORS
 
 # ── Importar el paquete os_simulator ──────────────────────────────────
-# server.py está en la raíz del proyecto; os_simulator/ es un subdirectorio.
 sys.path.insert(0, os.path.dirname(__file__))
 
 from os_simulator.core.kernel import Kernel
 from os_simulator.processes.process import PrioridadProceso
+from os_simulator.processes.schedulers import SCHEDULERS_DISPONIBLES
 
 # ══════════════════════════════════════════════════════════════════════
 # Flask app y CORS
@@ -32,18 +34,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(
     __name__,
-    static_folder=BASE_DIR,   # sirve CSS / JS desde la raíz del proyecto
+    static_folder=BASE_DIR,
     static_url_path="",
 )
-CORS(app)   # permite peticiones fetch() desde cualquier origen
+CORS(app)
 
 # ══════════════════════════════════════════════════════════════════════
 # Kernel singleton — un solo kernel para toda la sesión del servidor
 # ══════════════════════════════════════════════════════════════════════
 kernel: Kernel = Kernel(nombre="Aethelred OS", version="0.1.0", ram_mb=4096)
-
-# Contador para saber cuántas entradas de log ya conoce el cliente
-_log_offset: int = 0
 
 # Mapa de nombre → PrioridadProceso
 _PRIORIDADES: dict[str, PrioridadProceso] = {
@@ -71,9 +70,9 @@ def _serializar_log(entradas) -> list[dict]:
     """Convierte EntradaLog en dicts JSON-serializables."""
     return [
         {
-            "time": e.timestamp.strftime("%H:%M:%S"),
+            "time":  e.timestamp.strftime("%H:%M:%S"),
             "level": e.nivel,
-            "msg": e.mensaje,
+            "msg":   e.mensaje,
         }
         for e in entradas
     ]
@@ -102,12 +101,10 @@ def static_files(filename: str):
 # ══════════════════════════════════════════════════════════════════════
 @app.route("/api/start", methods=["POST"])
 def api_start():
-    global _log_offset
     if kernel.activo:
         return _err("El kernel ya está en ejecución.")
     try:
         kernel.arrancar()
-        _log_offset = 0
         return _ok(msg="Kernel iniciado.")
     except Exception as e:
         return _err(str(e))
@@ -123,9 +120,7 @@ def api_stop():
 
 @app.route("/api/restart", methods=["POST"])
 def api_restart():
-    global _log_offset
     kernel.reiniciar()
-    _log_offset = 0
     return _ok(msg="Kernel reiniciado.")
 
 
@@ -138,32 +133,102 @@ def api_tick():
 
 
 # ══════════════════════════════════════════════════════════════════════
+# API — Planificador
+# ══════════════════════════════════════════════════════════════════════
+@app.route("/api/scheduler", methods=["GET"])
+def api_get_scheduler():
+    """Devuelve el scheduler activo y la lista de schedulers disponibles."""
+    return jsonify({
+        "ok":          True,
+        "scheduler":   kernel.scheduler.nombre,
+        "disponibles": SCHEDULERS_DISPONIBLES,
+    })
+
+
+@app.route("/api/scheduler", methods=["POST"])
+def api_set_scheduler():
+    """
+    Cambia el algoritmo de planificación del Kernel.
+
+    Body JSON:
+        {
+          "tipo": "round_robin",   // clave del algoritmo
+          "quantum": 3,            // opcional, para round_robin / dos_niveles
+          "max_activos": 3         // opcional, para dos_niveles
+        }
+    """
+    data = request.get_json(silent=True) or {}
+    tipo = str(data.get("tipo", "fcfs")).lower().strip()
+
+    # Parámetros opcionales
+    kwargs: dict = {}
+    if "quantum" in data:
+        kwargs["quantum"] = max(1, int(data["quantum"]))
+    if "quantum_interno" in data:
+        kwargs["quantum_interno"] = max(1, int(data["quantum_interno"]))
+    if "max_activos" in data:
+        kwargs["max_activos"] = max(1, int(data["max_activos"]))
+
+    try:
+        kernel.cambiar_scheduler(tipo, **kwargs)
+    except ValueError as e:
+        return _err(str(e))
+
+    return _ok(
+        {"scheduler": kernel.scheduler.nombre},
+        msg=f"Planificador cambiado a '{kernel.scheduler.nombre}'.",
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════
 # API — Procesos
 # ══════════════════════════════════════════════════════════════════════
 @app.route("/api/process", methods=["POST"])
 def api_create_process():
+    """
+    Crea un nuevo proceso.
+
+    Body JSON:
+        {
+          "nombre":     "calc.exe",
+          "memoria_mb": 128,
+          "prioridad":  "media",    // "alta" | "media" | "baja"
+          "burst_time": 5,          // ciclos de CPU requeridos
+          "nice_value": 0           // prioridad numérica (-20 a +19)
+        }
+    """
     data = request.get_json(silent=True) or {}
-    nombre    = data.get("nombre", "proceso")
-    memoria   = int(data.get("memoria_mb", 128))
-    prioridad = _PRIORIDADES.get(
+    nombre     = data.get("nombre", "proceso")
+    memoria    = int(data.get("memoria_mb", 128))
+    prioridad  = _PRIORIDADES.get(
         str(data.get("prioridad", "media")).lower(),
         PrioridadProceso.MEDIA,
     )
+    burst_time = max(1, int(data.get("burst_time", 5)))
+    nice_value = int(data.get("nice_value", 0))
 
     if not kernel.activo:
         return _err("El kernel está inactivo. Inicia el SO primero.")
 
-    proceso = kernel.crear_proceso(nombre, memoria, prioridad)
+    proceso = kernel.crear_proceso(
+        nombre,
+        memoria_mb=memoria,
+        prioridad=prioridad,
+        burst_time=burst_time,
+        nice_value=nice_value,
+    )
     if proceso is None:
         return _err(f"No hay memoria suficiente para '{nombre}' ({memoria} MB).")
 
     return _ok(
         {
-            "pid":      proceso.pid,
-            "nombre":   proceso.nombre,
-            "estado":   proceso.estado.name,
-            "memoria":  proceso.memoria_requerida,
-            "prioridad": proceso.prioridad.name,
+            "pid":        proceso.pid,
+            "nombre":     proceso.nombre,
+            "estado":     proceso.estado.name,
+            "memoria":    proceso.memoria_requerida,
+            "prioridad":  proceso.prioridad.name,
+            "burst_time": proceso.burst_time,
+            "nice_value": proceso.nice_value,
         },
         msg=f"Proceso '{nombre}' creado con PID {proceso.pid}.",
     )
@@ -187,30 +252,33 @@ def api_state():
     las entradas nuevas desde la última consulta.
     """
     estado = kernel.estado()
-    
-    # Incluir proceso en ejecución en la lista de procesos mostrada
+
+    # Construir lista de procesos para la UI: CPU + cola
     procesos_ui = []
     if not kernel.cpu.esta_libre:
         p = kernel.cpu.proceso_actual
         procesos_ui.append({
-            "pid":      p.pid,
-            "nombre":   p.nombre,
-            "estado":   "EJECUTANDO",
-            "prioridad": p.prioridad.name,
-            "memoria":  p.memoria_requerida,
+            "pid":           p.pid,
+            "nombre":        p.nombre,
+            "estado":        "EJECUTANDO",
+            "prioridad":     p.prioridad.name,
+            "memoria":       p.memoria_requerida,
+            "burst_time":    p.burst_time,
+            "remaining_time": p.remaining_time,
+            "nice_value":    p.nice_value,
+            "queue_level":   p.queue_level,
         })
     for p_data in estado["procesos_en_cola"]:
-        # Buscar el objeto proceso para obtener más datos
-        p_obj = next(
-            (x for x in kernel.cola_procesos if x.pid == p_data["pid"]),
-            None
-        )
         procesos_ui.append({
-            "pid":      p_data["pid"],
-            "nombre":   p_data["nombre"],
-            "estado":   p_data["estado"],
-            "prioridad": p_obj.prioridad.name if p_obj else "MEDIA",
-            "memoria":  p_obj.memoria_requerida if p_obj else 0,
+            "pid":           p_data["pid"],
+            "nombre":        p_data["nombre"],
+            "estado":        p_data["estado"],
+            "prioridad":     p_data["prioridad"],
+            "memoria":       p_data["memoria"],
+            "burst_time":    p_data["burst_time"],
+            "remaining_time": p_data["remaining_time"],
+            "nice_value":    p_data["nice_value"],
+            "queue_level":   p_data["queue_level"],
         })
 
     # Log incremental
@@ -220,15 +288,17 @@ def api_state():
     nuevo_offset = len(todas)
 
     return jsonify({
-        "ok":          True,
-        "activo":      kernel.activo,
-        "ciclo":       kernel.ciclo_reloj,
-        "cpu":         estado["cpu"],
-        "memoria":     estado["memoria"],
-        "procesos":    procesos_ui,
-        "dispositivos": estado["dispositivos"],
-        "log_nuevas":  nuevas,
-        "log_offset":  nuevo_offset,
+        "ok":                  True,
+        "activo":              kernel.activo,
+        "ciclo":               kernel.ciclo_reloj,
+        "scheduler":           estado["kernel"]["scheduler"],
+        "cpu":                 estado["cpu"],
+        "memoria":             estado["memoria"],
+        "procesos":            procesos_ui,
+        "procesos_terminados": estado["procesos_terminados"],
+        "dispositivos":        estado["dispositivos"],
+        "log_nuevas":          nuevas,
+        "log_offset":          nuevo_offset,
     })
 
 

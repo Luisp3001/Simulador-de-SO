@@ -8,7 +8,7 @@
 const API = 'http://localhost:5000/api';
 
 // ─── ESTADO LOCAL (solo UI) ────────────────────────────────────────────
-let logOffset      = 0;   // Último índice de log conocido del servidor
+let logOffset      = 0;
 let pollTimer      = null;
 let bubbleTimer    = null;
 let uptimeTimer    = null;
@@ -49,12 +49,28 @@ const dom = {
     btnTick:       $('btn-tick'),
     btnNewProc:    $('btn-new-process'),
 
+    // Scheduler controls
+    schedulerSelect:      $('scheduler-select'),
+    quantumControl:       $('quantum-control'),
+    quantumInput:         $('quantum-input'),
+    btnApplyScheduler:    $('btn-apply-scheduler'),
+
+    // Modal
     modal:         $('modal-process'),
     inputName:     $('input-process-name'),
     inputMem:      $('input-process-mem'),
+    inputBurst:    $('input-process-burst'),
     inputPrio:     $('input-process-priority'),
+    inputNice:     $('input-process-nice'),
     btnModalOk:    $('btn-modal-confirm'),
     btnModalCx:    $('btn-modal-cancel'),
+
+    // Metrics panel
+    metricsSchedulerName: $('metrics-scheduler-name'),
+    metricsAverages:      $('metrics-averages'),
+    avgWaiting:           $('avg-waiting'),
+    avgTurnaround:        $('avg-turnaround'),
+    metricsTbody:         $('metrics-tbody'),
 };
 
 // ─── HELPERS DE FETCH ─────────────────────────────────────────────────
@@ -171,8 +187,10 @@ const PRIORITY_CLASS = { ALTA: 'priority-alta', MEDIA: 'priority-media', BAJA: '
 const STATE_LABEL    = { EJECUTANDO: 'Ejec.', LISTO: 'Listo', BLOQUEADO: 'Bloq.', NUEVO: 'Nuevo' };
 const STATE_CSS      = { EJECUTANDO: 'running', LISTO: 'waiting', BLOQUEADO: 'waiting' };
 
+// Colores por nivel de cola
+const QUEUE_LEVEL_COLOR = ['#c8a84b', '#b06a2f', '#666'];
+
 function renderProcessList(procesos) {
-    // ── Caso vacío ────────────────────────────────────────────────────
     if (!procesos || procesos.length === 0) {
         dom.processList.querySelectorAll('.process-item').forEach(el => el.remove());
         dom.processEmpty.style.display = 'flex';
@@ -180,45 +198,38 @@ function renderProcessList(procesos) {
     }
     dom.processEmpty.style.display = 'none';
 
-    // ── Índice de lo que ya existe en el DOM ─────────────────────────
     const existentes = new Map();
     dom.processList.querySelectorAll('.process-item').forEach(el => {
         existentes.set(parseInt(el.dataset.pid, 10), el);
     });
 
-    // ── PIDs que llegan del servidor ──────────────────────────────────
     const nuevoPids = new Set(procesos.map(p => p.pid));
 
-    // 1. Eliminar los que ya no existen
     existentes.forEach((el, pid) => {
         if (!nuevoPids.has(pid)) el.remove();
     });
 
-    // 2. Reconstruir el orden de referencia DESPUÉS de las eliminaciones
-    //    para saber si un elemento ya está en la posición correcta.
-    const getOrdenActual = () =>
-        [...dom.processList.querySelectorAll('.process-item')]
-            .map(el => parseInt(el.dataset.pid, 10));
-
-    // 3. Añadir nuevos / actualizar existentes
     procesos.forEach((proc) => {
         const stateCss   = STATE_CSS[proc.estado]   || 'waiting';
         const stateLabel = STATE_LABEL[proc.estado]  || proc.estado;
+        const niceStr    = proc.nice_value !== undefined ? `nice=${proc.nice_value}` : '';
+        const remStr     = proc.remaining_time !== undefined ? `⏱${proc.remaining_time}` : '';
 
         if (existentes.has(proc.pid)) {
-            // ── Ya existe: parchar solo si el texto del estado cambió ──
             const el   = existentes.get(proc.pid);
             const chip = el.querySelector('.proc-state');
             if (chip && chip.textContent !== stateLabel) {
                 chip.textContent = stateLabel;
                 chip.className   = `proc-state ${stateCss}`;
             }
-            // Solo mover en el DOM si la posición cambió realmente
+            // Actualizar remaining time
+            const remEl = el.querySelector('.proc-rem');
+            if (remEl) remEl.textContent = remStr;
+
             if (el.nextSibling !== dom.processEmpty) {
                 dom.processList.insertBefore(el, dom.processEmpty);
             }
         } else {
-            // ── Nuevo proceso: crear, animar UNA sola vez, insertar ────
             const el = document.createElement('div');
             el.className   = `process-item process-item--new ${PRIORITY_CLASS[proc.prioridad] || 'priority-media'}`;
             el.dataset.pid = proc.pid;
@@ -226,14 +237,81 @@ function renderProcessList(procesos) {
                 <span class="proc-id">PID ${proc.pid}</span>
                 <span class="proc-name">${proc.nombre}</span>
                 <span class="proc-mem">${proc.memoria}MB</span>
+                <span class="proc-rem" title="Ciclos restantes">${remStr}</span>
+                <span class="proc-nice" title="Nice value">${niceStr}</span>
                 <span class="proc-state ${stateCss}">${stateLabel}</span>
                 <button class="proc-kill" title="Terminar proceso" data-pid="${proc.pid}">✕</button>
             `;
             dom.processList.insertBefore(el, dom.processEmpty);
-            // Quitar la clase de animación cuando termine para no re-dispararla
             el.addEventListener('animationend', () => el.classList.remove('process-item--new'), { once: true });
         }
     });
+}
+
+// ─── MÉTRICAS DE PROCESOS TERMINADOS ─────────────────────────────────
+function updateMetrics(terminados, schedulerName) {
+    // Nombre del scheduler
+    if (dom.metricsSchedulerName) {
+        dom.metricsSchedulerName.textContent = schedulerName || '—';
+    }
+
+    if (!terminados || terminados.length === 0) {
+        if (dom.metricsAverages) dom.metricsAverages.style.display = 'none';
+        if (dom.metricsTbody) {
+            dom.metricsTbody.innerHTML = '<tr><td colspan="8" class="metrics-empty">Sin procesos terminados</td></tr>';
+        }
+        return;
+    }
+
+    // Calcular promedios
+    const avgWait = terminados.reduce((s, p) => s + (p.waiting_time || 0), 0) / terminados.length;
+    const avgTAT  = terminados.reduce((s, p) => s + (p.turnaround_time || 0), 0) / terminados.length;
+
+    if (dom.metricsAverages) dom.metricsAverages.style.display = 'flex';
+    if (dom.avgWaiting)    dom.avgWaiting.textContent    = avgWait.toFixed(2) + ' ciclos';
+    if (dom.avgTurnaround) dom.avgTurnaround.textContent = avgTAT.toFixed(2) + ' ciclos';
+
+    // Tabla de procesos terminados
+    if (dom.metricsTbody) {
+        dom.metricsTbody.innerHTML = terminados.map(p => `
+            <tr>
+                <td>${p.pid}</td>
+                <td>${p.nombre}</td>
+                <td>${p.burst_time}</td>
+                <td>${p.arrival_time}</td>
+                <td>${p.start_time >= 0 ? p.start_time : '—'}</td>
+                <td>${p.completion_time}</td>
+                <td class="metric-waiting">${p.waiting_time}</td>
+                <td class="metric-tat">${p.turnaround_time}</td>
+            </tr>
+        `).join('');
+    }
+}
+
+// ─── SCHEDULER ────────────────────────────────────────────────────────
+const SCHEDULERS_WITH_QUANTUM = ['round_robin', 'dos_niveles'];
+
+function onSchedulerChange() {
+    const tipo = dom.schedulerSelect ? dom.schedulerSelect.value : 'fcfs';
+    if (dom.quantumControl) {
+        dom.quantumControl.style.display =
+            SCHEDULERS_WITH_QUANTUM.includes(tipo) ? 'flex' : 'none';
+    }
+}
+
+async function applyScheduler() {
+    const tipo = dom.schedulerSelect ? dom.schedulerSelect.value : 'fcfs';
+    const body = { tipo };
+    if (SCHEDULERS_WITH_QUANTUM.includes(tipo) && dom.quantumInput) {
+        body.quantum = parseInt(dom.quantumInput.value, 10) || 2;
+    }
+    const res = await apiPost('/scheduler', body);
+    if (!res.ok) {
+        appendLog(res.msg, 'err');
+    } else {
+        appendLog(`Planificador → ${res.scheduler}`, 'ok');
+        await pollState();
+    }
 }
 
 // ─── POLLING: actualizar UI desde servidor ────────────────────────────
@@ -267,6 +345,9 @@ async function pollState() {
 
     // Procesos
     renderProcessList(data.procesos);
+
+    // Métricas
+    updateMetrics(data.procesos_terminados, data.scheduler);
 }
 
 // ─── BUBBLES ──────────────────────────────────────────────────────────
@@ -319,7 +400,7 @@ async function handleStart() {
     if (!res.ok) { appendLog(res.msg, 'err'); return; }
     logOffset = 0;
     setRunningUI(true);
-    await pollState();   // carga inicial inmediata
+    await pollState();
 }
 
 async function handleStop() {
@@ -351,11 +432,13 @@ async function handleTick() {
 
 // ─── MODAL NUEVO PROCESO ──────────────────────────────────────────────
 function openModal() {
-    dom.inputName.value = '';
-    dom.inputMem.value  = '128';
-    dom.inputPrio.value = 'media';
+    if (dom.inputName)  dom.inputName.value  = '';
+    if (dom.inputMem)   dom.inputMem.value   = '128';
+    if (dom.inputBurst) dom.inputBurst.value = '5';
+    if (dom.inputPrio)  dom.inputPrio.value  = 'media';
+    if (dom.inputNice)  dom.inputNice.value  = '0';
     dom.modal.classList.add('active');
-    dom.inputName.focus();
+    if (dom.inputName) dom.inputName.focus();
 }
 
 function closeModal() {
@@ -363,13 +446,23 @@ function closeModal() {
 }
 
 async function confirmNewProcess() {
-    const nombre    = dom.inputName.value.trim() || `proceso_${Date.now()}`;
-    const memoria   = parseInt(dom.inputMem.value, 10) || 128;
-    const prioridad = dom.inputPrio.value;
+    const nombre    = dom.inputName ? dom.inputName.value.trim() : '';
+    const memoria   = parseInt(dom.inputMem ? dom.inputMem.value : '128', 10) || 128;
+    const burst     = parseInt(dom.inputBurst ? dom.inputBurst.value : '5', 10) || 5;
+    const prioridad = dom.inputPrio ? dom.inputPrio.value : 'media';
+    const nice      = parseInt(dom.inputNice ? dom.inputNice.value : '0', 10) || 0;
+    const finalNombre = nombre || `proceso_${Date.now()}`;
 
     if (memoria < 1 || memoria > 4096) { alert('Memoria fuera de rango (1–4096 MB)'); return; }
+    if (burst   < 1 || burst   > 100)  { alert('Ráfaga fuera de rango (1–100 ciclos)'); return; }
 
-    const res = await apiPost('/process', { nombre, memoria_mb: memoria, prioridad });
+    const res = await apiPost('/process', {
+        nombre:     finalNombre,
+        memoria_mb: memoria,
+        prioridad,
+        burst_time: burst,
+        nice_value: nice,
+    });
     if (!res.ok) { appendLog(res.msg, 'err'); }
     closeModal();
     await pollState();
@@ -397,21 +490,26 @@ dom.processList.addEventListener('click', e => {
 dom.inputName.addEventListener('keydown', e => { if (e.key === 'Enter') confirmNewProcess(); });
 dom.inputMem.addEventListener('keydown',  e => { if (e.key === 'Enter') confirmNewProcess(); });
 
+if (dom.schedulerSelect) {
+    dom.schedulerSelect.addEventListener('change', onSchedulerChange);
+}
+if (dom.btnApplyScheduler) {
+    dom.btnApplyScheduler.addEventListener('click', applyScheduler);
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────
 (async function init() {
     dom.time.textContent = '00:00:00';
     buildMemoryGrid();
     updateCpuGauge(0);
     renderProcessList([]);
+    onSchedulerChange(); // sincronizar visibilidad del campo quantum
 
-    // Sincronizar con el estado real del servidor al cargar la página.
-    // Si el kernel ya estaba corriendo (ej. recarga del navegador sin
-    // reiniciar el servidor), retomar el polling sin llamar a /start de nuevo.
     try {
         const data = await apiGet('/state?log_offset=0');
         if (data.ok && data.activo) {
             appendLog('Servidor activo detectado — reanudando sesión.', 'sys');
-            logOffset = data.log_offset;   // no repetir el log histórico
+            logOffset = data.log_offset;
             setRunningUI(true);
             await pollState();
         } else {
@@ -421,4 +519,3 @@ dom.inputMem.addEventListener('keydown',  e => { if (e.key === 'Enter') confirmN
         appendLog('No se pudo conectar al servidor. ¿Está corriendo server.py?', 'err');
     }
 })();
-
