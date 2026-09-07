@@ -224,6 +224,22 @@ class Kernel:
             f"Planificador cambiado a: {nuevo.nombre}.", "OK"
         )
 
+    def cambiar_algoritmo_memoria(self, tipo: str) -> None:
+        """Cambia el gestor de RAM únicamente cuando no hay procesos activos."""
+        hay_procesos_activos = not self._cpu.esta_libre or bool(self._cola_procesos)
+        if hay_procesos_activos:
+            mensaje = (
+                "No se puede cambiar el algoritmo de memoria mientras haya "
+                "procesos en CPU o en la cola."
+            )
+            self._registrar_log(mensaje, "ERR")
+            raise RuntimeError(mensaje)
+
+        self._memoria.cambiar_algoritmo(tipo)
+        self._registrar_log(
+            f"Gestor de memoria cambiado a: {self._memoria.algoritmo_nombre}.", "OK"
+        )
+
     # ── Gestión de procesos ───────────────────────────────────────────────
 
     def crear_proceso(
@@ -541,12 +557,7 @@ class Kernel:
                 "ciclos_totales": self._cpu.ciclos_totales,
                 "ciclos_en_cpu":  self._ciclos_en_cpu,
             },
-            "memoria": {
-                "total_mb":      self._memoria.capacidad_total,
-                "usada_mb":      self._memoria.memoria_usada,
-                "disponible_mb": self._memoria.memoria_disponible,
-                "uso_pct":       round(self._memoria.uso_porcentaje, 2),
-            },
+            "memoria": self._memoria.estado(),
             "procesos_en_cola":   procesos_en_cola,
             "procesos_terminados": procesos_terminados,
             "dispositivos": {

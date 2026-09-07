@@ -159,9 +159,23 @@
                     </div>
 
                     <div class="card-body">
-                        <!-- LED Memory Blocks Matrix -->
-                        <div class="memory-grid-label">Mapa de Bloques (64 bloques):</div>
+                        <div class="memory-controls">
+                            <label for="memory-strategy-select" class="control-label">Administrador:</label>
+                            <select id="memory-strategy-select" class="form-input form-select memory-strategy-select">
+                                <option value="bitmap">Mapa de bits</option>
+                                <option value="lista_enlazada">Lista enlazada (First Fit)</option>
+                                <option value="buddy">Sistema de asociados (Buddy)</option>
+                            </select>
+                            <button class="btn btn-primary-outline btn-sm" id="btn-apply-memory">Aplicar</button>
+                        </div>
+
+                        <!-- Mapa físico entregado por el backend -->
+                        <div class="memory-grid-label" id="memory-grid-label">Mapa físico:</div>
                         <div class="memory-grid" id="memory-grid"></div>
+                        <div class="memory-legend">
+                            <span><i class="legend-swatch free"></i>Libre</span>
+                            <span><i class="legend-swatch used"></i>Asignado (color por PID)</span>
+                        </div>
 
                         <div class="memory-stats-grid">
                             <div class="mem-stat-item">
@@ -171,6 +185,26 @@
                             <div class="mem-stat-item">
                                 <span class="mem-stat-label">Disponible</span>
                                 <strong class="mem-stat-val text-success" id="mem-available">4096 MB</strong>
+                            </div>
+                            <div class="mem-stat-item">
+                                <span class="mem-stat-label">Solicitada</span>
+                                <strong class="mem-stat-val" id="mem-requested">0 MB</strong>
+                            </div>
+                            <div class="mem-stat-item">
+                                <span class="mem-stat-label">Reservada</span>
+                                <strong class="mem-stat-val" id="mem-reserved">0 MB</strong>
+                            </div>
+                            <div class="mem-stat-item">
+                                <span class="mem-stat-label">Frag. interna</span>
+                                <strong class="mem-stat-val text-warning" id="mem-internal-frag">0 MB</strong>
+                            </div>
+                            <div class="mem-stat-item">
+                                <span class="mem-stat-label">Frag. externa</span>
+                                <strong class="mem-stat-val text-warning" id="mem-external-frag">0 MB</strong>
+                            </div>
+                            <div class="mem-stat-item memory-stat-wide">
+                                <span class="mem-stat-label">Mayor bloque utilizable</span>
+                                <strong class="mem-stat-val" id="mem-largest-hole">4096 MB</strong>
                             </div>
                         </div>
 

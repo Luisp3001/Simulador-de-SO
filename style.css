@@ -589,6 +589,19 @@ body {
 }
 
 /* ── Memory Panel Details ───────────────────────────────────────────── */
+.memory-controls {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+
+.memory-strategy-select {
+  width: 100%;
+  min-width: 0;
+}
+
 .memory-grid-label {
   font-size: 0.72rem;
   color: var(--text-muted);
@@ -597,14 +610,23 @@ body {
 }
 
 .memory-grid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
   gap: 3px;
-  margin-bottom: 1rem;
+  margin-bottom: 0.45rem;
   background: var(--bg-card-inner);
   padding: 0.6rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
+}
+
+.memory-grid--cells {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+}
+
+.memory-grid--segments {
+  display: flex;
+  align-items: stretch;
+  min-height: 54px;
 }
 
 .mem-block {
@@ -615,16 +637,59 @@ body {
   transition: background 0.3s, box-shadow 0.3s;
 }
 
+.memory-grid--segments .mem-block {
+  height: 52px;
+  min-width: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: white;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  white-space: nowrap;
+  flex-basis: 0;
+}
+
 .mem-block.used {
   background: #0284c7;
   border-color: #38bdf8;
   box-shadow: 0 0 6px rgba(56, 189, 248, 0.4);
 }
 
-.mem-block.used.high {
-  background: #dc2626;
-  border-color: #f87171;
-  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+.mem-block.free {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+}
+
+.memory-legend {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+  color: var(--text-dim);
+  font-size: 0.65rem;
+}
+
+.memory-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.legend-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.legend-swatch.free {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.legend-swatch.used {
+  background: var(--accent-sky);
 }
 
 .memory-stats-grid {
@@ -656,8 +721,16 @@ body {
   font-family: var(--font-mono);
 }
 
+.memory-stat-wide {
+  grid-column: 1 / -1;
+}
+
 .text-success {
   color: #34d399 !important;
+}
+
+.text-warning {
+  color: #fbbf24 !important;
 }
 
 /* Modern Progress Bar */
@@ -1238,5 +1311,8 @@ body {
   .scheduler-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+  .memory-controls {
+    grid-template-columns: 1fr;
   }
 }

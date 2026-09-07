@@ -40,6 +40,14 @@ const dom = {
     memLiquidFill: $('mem-liquid-fill'),
     memLiquidPct:  $('mem-liquid-pct'),
     memLiquid:     $('mem-liquid'),
+    memGridLabel:  $('memory-grid-label'),
+    memRequested:  $('mem-requested'),
+    memReserved:   $('mem-reserved'),
+    memInternal:   $('mem-internal-frag'),
+    memExternal:   $('mem-external-frag'),
+    memLargest:    $('mem-largest-hole'),
+    memoryStrategySelect: $('memory-strategy-select'),
+    btnApplyMemory: $('btn-apply-memory'),
 
     logOutput:     $('log-output'),
 
@@ -144,37 +152,50 @@ function updateCpuGauge(pct) {
 }
 
 // ─── MEMORIA ──────────────────────────────────────────────────────────
-const MEMORY_BLOCKS = 64;
+function memoryColor(pid) {
+    const hue = (Number(pid) * 67 + 185) % 360;
+    return `hsl(${hue} 72% 48%)`;
+}
 
-function buildMemoryGrid() {
+function renderMemoryBlocks(memData) {
+    const bloques = memData.bloques || [];
     dom.memGrid.innerHTML = '';
-    for (let i = 0; i < MEMORY_BLOCKS; i++) {
+    dom.memGrid.classList.toggle('memory-grid--cells', memData.tipo_vista === 'celdas');
+    dom.memGrid.classList.toggle('memory-grid--segments', memData.tipo_vista !== 'celdas');
+
+    bloques.forEach((item) => {
         const block = document.createElement('div');
-        block.className = 'mem-block';
-        block.id = `mb-${i}`;
+        block.className = `mem-block ${item.libre ? 'free' : 'used'}`;
+        if (memData.tipo_vista !== 'celdas') {
+            block.style.flexGrow = String(item.tamaño);
+        }
+        if (!item.libre) {
+            block.style.backgroundColor = memoryColor(item.pid);
+            block.style.borderColor = memoryColor(item.pid);
+        }
+        const dueño = item.libre ? 'Libre' : `PID ${item.pid}`;
+        block.title = `${dueño} · ${item.inicio}–${item.inicio + item.tamaño} MB · ${item.tamaño} MB`;
+        if (memData.tipo_vista !== 'celdas' && item.tamaño >= 256) {
+            block.textContent = item.libre ? `${item.tamaño} MB` : `PID ${item.pid} · ${item.tamaño} MB`;
+        }
         dom.memGrid.appendChild(block);
-    }
+    });
 }
 
 function updateMemory(memData) {
     const { total_mb, usada_mb, disponible_mb, uso_pct } = memData;
-    const usedBlocks   = Math.round((usada_mb / total_mb) * MEMORY_BLOCKS);
-    const highThreshold = MEMORY_BLOCKS * 0.8;
-
-    for (let i = 0; i < MEMORY_BLOCKS; i++) {
-        const block = $(`mb-${i}`);
-        if (!block) continue;
-        if (i < usedBlocks) {
-            block.classList.add('used');
-            block.classList.toggle('high', i >= highThreshold);
-        } else {
-            block.classList.remove('used', 'high');
-        }
-    }
+    renderMemoryBlocks(memData);
 
     dom.memTotal.textContent = `${total_mb} MB`;
     dom.memAvail.textContent = `${disponible_mb} MB`;
     dom.memUsage.textContent = `${Math.round(uso_pct)}%`;
+    dom.memRequested.textContent = `${memData.solicitada_mb} MB`;
+    dom.memReserved.textContent = `${memData.reservada_mb} MB`;
+    dom.memInternal.textContent = `${memData.fragmentacion_interna_mb} MB`;
+    dom.memExternal.textContent = `${memData.fragmentacion_externa_mb} MB`;
+    dom.memLargest.textContent = `${memData.mayor_hueco_libre_mb} MB`;
+    dom.memGridLabel.textContent = `${memData.algoritmo_nombre} · mapa físico:`;
+    dom.memoryStrategySelect.value = memData.algoritmo;
 
     dom.memLiquidFill.style.width = `${uso_pct}%`;
     dom.memLiquidFill.style.setProperty('--pb-liquid-level', `${uso_pct}%`);
@@ -319,6 +340,18 @@ async function applyScheduler() {
     }
 }
 
+async function applyMemoryStrategy() {
+    const tipo = dom.memoryStrategySelect.value;
+    const res = await apiPost('/memory/strategy', { tipo });
+    if (!res.ok) {
+        appendLog(res.msg, 'err');
+        await pollState();
+        return;
+    }
+    appendLog(`Memoria → ${res.nombre}`, 'ok');
+    await pollState();
+}
+
 // ─── POLLING: actualizar UI desde servidor ────────────────────────────
 async function pollState() {
     const data = await apiGet(`/state?log_offset=${logOffset}`);
@@ -350,6 +383,10 @@ async function pollState() {
 
     // Procesos
     renderProcessList(data.procesos);
+    dom.btnApplyMemory.disabled = data.procesos.length > 0;
+    dom.btnApplyMemory.title = data.procesos.length > 0
+        ? 'Finaliza todos los procesos antes de cambiar el algoritmo'
+        : 'Aplicar algoritmo de memoria';
 
     // Métricas
     updateMetrics(data.procesos_terminados, data.scheduler);
@@ -413,7 +450,7 @@ async function handleStop() {
     if (!res.ok) { appendLog(res.msg, 'err'); return; }
     setRunningUI(false);
     appendLog('Sistema detenido.', 'warn');
-    renderProcessList([]);
+    await pollState();
 }
 
 async function handleRestart() {
@@ -501,24 +538,34 @@ if (dom.schedulerSelect) {
 if (dom.btnApplyScheduler) {
     dom.btnApplyScheduler.addEventListener('click', applyScheduler);
 }
+if (dom.btnApplyMemory) {
+    dom.btnApplyMemory.addEventListener('click', applyMemoryStrategy);
+}
 
 // ─── INIT ─────────────────────────────────────────────────────────────
 (async function init() {
     dom.time.textContent = '00:00:00';
-    buildMemoryGrid();
     updateCpuGauge(0);
     renderProcessList([]);
     onSchedulerChange(); // sincronizar visibilidad del campo quantum
 
     try {
         const data = await apiGet('/state?log_offset=0');
-        if (data.ok && data.activo) {
-            appendLog('Servidor activo detectado — reanudando sesión.', 'sys');
+        if (data.ok) {
             logOffset = data.log_offset;
-            setRunningUI(true);
-            await pollState();
+            updateMemory(data.memoria);
+            renderProcessList(data.procesos);
+            updateMetrics(data.procesos_terminados, data.scheduler);
+            dom.btnApplyMemory.disabled = data.procesos.length > 0;
+            if (data.activo) {
+                appendLog('Servidor activo detectado — reanudando sesión.', 'sys');
+                setRunningUI(true);
+                await pollState();
+            } else {
+                appendLog('Interfaz lista — Presiona "Iniciar SO" para arrancar el Kernel.', 'sys');
+            }
         } else {
-            appendLog('Interfaz lista — Presiona "Iniciar SO" para arrancar el Kernel.', 'sys');
+            appendLog('No se pudo consultar el estado del servidor.', 'err');
         }
     } catch {
         appendLog('No se pudo conectar al servidor. ¿Está corriendo server.py?', 'err');

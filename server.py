@@ -24,6 +24,7 @@ from flask_cors import CORS
 sys.path.insert(0, os.path.dirname(__file__))
 
 from os_simulator.core.kernel import Kernel
+from os_simulator.memory.memory import ALGORITMOS_MEMORIA
 from os_simulator.processes.schedulers import SCHEDULERS_DISPONIBLES
 
 # ══════════════════════════════════════════════════════════════════════
@@ -169,6 +170,38 @@ def api_set_scheduler():
     return _ok(
         {"scheduler": kernel.scheduler.nombre},
         msg=f"Planificador cambiado a '{kernel.scheduler.nombre}'.",
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════
+# API — Administración de memoria
+# ══════════════════════════════════════════════════════════════════════
+@app.route("/api/memory/strategy", methods=["GET"])
+def api_get_memory_strategy():
+    """Devuelve el algoritmo de memoria activo y las opciones disponibles."""
+    return jsonify({
+        "ok": True,
+        "algoritmo": kernel.memoria.algoritmo,
+        "nombre": kernel.memoria.algoritmo_nombre,
+        "disponibles": ALGORITMOS_MEMORIA,
+    })
+
+
+@app.route("/api/memory/strategy", methods=["POST"])
+def api_set_memory_strategy():
+    """Cambia el algoritmo si no existen procesos en CPU ni en la cola."""
+    data = request.get_json(silent=True) or {}
+    tipo = str(data.get("tipo", "bitmap")).lower().strip()
+    try:
+        kernel.cambiar_algoritmo_memoria(tipo)
+    except (RuntimeError, ValueError) as exc:
+        return _err(str(exc), 409 if isinstance(exc, RuntimeError) else 400)
+    return _ok(
+        {
+            "algoritmo": kernel.memoria.algoritmo,
+            "nombre": kernel.memoria.algoritmo_nombre,
+        },
+        msg=f"Gestor de memoria cambiado a '{kernel.memoria.algoritmo_nombre}'.",
     )
 
 

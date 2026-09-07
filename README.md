@@ -65,3 +65,35 @@ Si tras ejecutar un ciclo el `remaining_time` llega a 0:
 2. Se libera su memoria RAM (queda disponible para otros procesos).
 3. Se calculan las métricas finales (*Turnaround Time* y *Waiting Time*).
 4. El proceso se mueve a la tabla de procesos completados en la interfaz para analizar las estadísticas (Promedios).
+
+---
+
+## 🧩 Algoritmos de Administración de Memoria
+
+El gestor de RAM también implementa el patrón Strategy y permite comparar tres
+formas de asignación desde el panel **Memoria RAM**:
+
+1. **Mapa de bits:** divide los 4096 MB en 64 marcos de 64 MB. Una asignación
+   puede ocupar marcos no contiguos y puede producir fragmentación interna.
+2. **Lista enlazada (First Fit):** mantiene nodos libres y ocupados de tamaño
+   variable. Divide huecos al asignar y fusiona nodos libres adyacentes al liberar.
+3. **Sistema de asociados (Buddy):** redondea cada solicitud a una potencia de
+   dos, divide bloques y vuelve a fusionar asociados libres recursivamente.
+
+La interfaz muestra la ubicación real de cada asignación, coloreada por PID, y
+las métricas de memoria solicitada, reservada, fragmentación interna,
+fragmentación externa y mayor bloque utilizable.
+
+Por seguridad, el algoritmo solo puede cambiarse cuando no hay ningún proceso
+en la CPU ni en la cola. La API devuelve `409 Conflict` si se intenta cambiarlo
+con procesos activos.
+
+### API de memoria
+
+```http
+GET /api/memory/strategy
+POST /api/memory/strategy
+Content-Type: application/json
+
+{"tipo": "buddy"}
+```
