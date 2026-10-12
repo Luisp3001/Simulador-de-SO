@@ -1,6 +1,6 @@
-# 🔥 Hephaestus Core
+# 🔥 BALJ OS
 
-Hephaestus Core es un **Simulador de Sistema Operativo** interactivo con fines educativos. Su objetivo es demostrar visualmente el ciclo de vida de los procesos, el funcionamiento de un Kernel moderno, y cómo los distintos algoritmos de planificación (schedulers) administran la CPU.
+BALJ OS es un **Simulador de Sistema Operativo** interactivo con fines educativos. Su objetivo es demostrar visualmente el ciclo de vida de los procesos, el funcionamiento de un Kernel moderno, y cómo los distintos algoritmos de planificación (schedulers) administran la CPU.
 
 Cuenta con un backend desarrollado en Python (con Flask para la API) y un frontend moderno y responsivo (HTML/CSS/JS) donde los usuarios pueden interactuar en tiempo real con el sistema operativo simulado.
 
@@ -73,7 +73,7 @@ Si tras ejecutar un ciclo el `remaining_time` llega a 0:
 El gestor de RAM también implementa el patrón Strategy y permite comparar tres
 formas de asignación desde el panel **Memoria RAM**:
 
-1. **Mapa de bits:** divide los 4096 MB en 64 marcos de 64 MB. Una asignación
+1. **Mapa de bits:** divide los 2048 MB en 64 marcos de 64 MB. Una asignación
    puede ocupar marcos no contiguos y puede producir fragmentación interna.
 2. **Lista enlazada (First Fit):** mantiene nodos libres y ocupados de tamaño
    variable. Divide huecos al asignar y fusiona nodos libres adyacentes al liberar.
@@ -97,3 +97,22 @@ Content-Type: application/json
 
 {"tipo": "buddy"}
 ```
+
+---
+
+## 🧠 Módulo de memoria independiente (Avance 3)
+
+Se accede desde la pestaña **Administración de memoria** (independiente de CPU y planificador; no requiere iniciar el SO).
+
+* **RAM**: constante (2048 MB), no editable.
+* **Unidad de asignación**: la define el usuario (debe dividir exactamente la RAM). El módulo permanece bloqueado hasta definirla.
+* **Mapa de bits**: inicia en `0` (libre); cada proceso pone en `1` sus casillas.
+* **Fórmulas**:
+  * Malla = `RAM / unidad`
+  * Casillas de un proceso = `⌈tamaño / unidad⌉`
+* Los procesos se ubican en la primera secuencia de ceros consecutivos (First Fit sobre el mapa).
+* API: `/api/memlab` (GET), `/api/memlab/unit`, `/api/memlab/strategy`, `/api/memlab/process` (POST/DELETE), `/api/memlab/reset`.
+
+### Avance 3 · Sección 6 — navegación y capturas
+Pestaña **Administración de memoria**: Mapa de bits · Lista ligada (First/Next/Best/Worst Fit) · Sistema de asociados · Reemplazo de páginas (OPT, NRU, FIFO, LRU). La unidad de asignación solo existe en el mapa de bits.
+Las capturas para el informe están en `capturas/`. Pruebas: `python tests/test_memory_algorithms.py` (con `PYTHONPATH=.`).

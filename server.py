@@ -24,7 +24,8 @@ from flask_cors import CORS
 sys.path.insert(0, os.path.dirname(__file__))
 
 from os_simulator.core.kernel import Kernel
-from os_simulator.memory.memory import ALGORITMOS_MEMORIA
+from os_simulator.memory.memory import ALGORITMOS_MEMORIA, Memoria, unidades_validas
+from os_simulator.memory.paginacion import ALGORITMOS_PAGINAS, comparar, parsear_referencias, simular
 from os_simulator.processes.schedulers import SCHEDULERS_DISPONIBLES
 
 # ══════════════════════════════════════════════════════════════════════
@@ -42,7 +43,17 @@ CORS(app)
 # ══════════════════════════════════════════════════════════════════════
 # Kernel singleton — un solo kernel para toda la sesión del servidor
 # ══════════════════════════════════════════════════════════════════════
-kernel: Kernel = Kernel(nombre="Hephaestus Core", version="0.1.0", ram_mb=4096)
+RAM_MB = 2048  # La RAM del sistema es una constante: el usuario NO puede cambiarla.
+
+kernel: Kernel = Kernel(nombre="BALJ OS", version="0.1.0", ram_mb=RAM_MB)
+
+# ── Módulo de memoria INDEPENDIENTE ──────────────────────────────────
+# Instancia propia de Memoria, separada del kernel: no necesita CPU,
+# planificador ni que el SO esté iniciado. Arranca sin unidad de asignación
+# definida y el módulo permanece bloqueado hasta que el usuario la define.
+memoria_lab: Memoria = Memoria(capacidad_total=RAM_MB, algoritmo="bitmap")
+_lab_nombres: dict[int, str] = {}
+_lab_siguiente_pid = 1
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -206,6 +217,138 @@ def api_set_memory_strategy():
 
 
 # ══════════════════════════════════════════════════════════════════════
+# API — Módulo de memoria independiente (/api/memlab)
+# ══════════════════════════════════════════════════════════════════════
+def _estado_memlab() -> dict:
+    estado = memoria_lab.estado()
+    procesos = []
+    for pid, datos in sorted(estado["asignaciones"].items()):
+        procesos.append({
+            "pid": pid,
+            "nombre": _lab_nombres.get(pid, f"proceso_{pid}"),
+            "solicitada_mb": datos["solicitada_mb"],
+            "reservada_mb": datos["reservada_mb"],
+            "unidades": datos.get("unidades"),
+            "marcos": datos.get("marcos"),
+            "inicio": datos.get("inicio"),
+        })
+    return {
+        "ok": True,
+        "ram_mb": RAM_MB,
+        "activo": memoria_lab.algoritmo,
+        "requiere_unidad": memoria_lab.requiere_unidad,   # solo el mapa de bits
+        "listo": memoria_lab.listo,
+        "unidad_definida": memoria_lab.unidad_definida and memoria_lab.requiere_unidad,
+        "unidad_mb": memoria_lab.unidad_asignacion if memoria_lab.requiere_unidad else None,
+        "unidades_validas": unidades_validas(RAM_MB),
+        "algoritmos": ALGORITMOS_MEMORIA,
+        "memoria": estado,
+        "procesos": procesos,
+    }
+
+
+@app.route("/api/memlab", methods=["GET"])
+def api_memlab_estado():
+    return jsonify(_estado_memlab())
+
+
+@app.route("/api/memlab/unit", methods=["POST"])
+def api_memlab_unidad():
+    """Define o cambia la unidad de asignación (solo mapa de bits, con memoria vacía)."""
+    if not memoria_lab.requiere_unidad:
+        return _err("La unidad de asignación solo aplica al mapa de bits.", 409)
+    data = request.get_json(silent=True) or {}
+    try:
+        unidad = int(data.get("unidad"))
+    except (TypeError, ValueError):
+        return _err("Ingresa un número entero para la unidad de asignación.")
+    try:
+        memoria_lab.configurar_unidad(unidad)
+    except RuntimeError as exc:
+        return _err(str(exc), 409)
+    except ValueError as exc:
+        return _err(str(exc))
+    total = RAM_MB // unidad
+    return _ok(_estado_memlab(), msg=f"Unidad definida: {unidad} MB → {RAM_MB} / {unidad} = {total} unidades.")
+
+
+@app.route("/api/memlab/strategy", methods=["POST"])
+def api_memlab_estrategia():
+    """Cambia el algoritmo activo: bitmap, first/next/best/worst_fit o buddy."""
+    data = request.get_json(silent=True) or {}
+    try:
+        memoria_lab.cambiar_algoritmo(str(data.get("tipo", "bitmap")))
+    except RuntimeError as exc:
+        return _err(str(exc), 409)
+    except ValueError as exc:
+        return _err(str(exc))
+    return _ok(_estado_memlab(), msg=f"Administrador: {memoria_lab.algoritmo_nombre}.")
+
+
+@app.route("/api/memlab/process", methods=["POST"])
+def api_memlab_asignar():
+    global _lab_siguiente_pid
+    if not memoria_lab.listo:
+        return _err("Define primero la unidad de asignación.", 409)
+    data = request.get_json(silent=True) or {}
+    try:
+        memoria = int(data.get("memoria_mb"))
+    except (TypeError, ValueError):
+        return _err("El tamaño del proceso debe ser un número entero (MB).")
+    if not 1 <= memoria <= RAM_MB:
+        return _err(f"El tamaño debe estar entre 1 y {RAM_MB} MB.")
+    pid = _lab_siguiente_pid
+    nombre = str(data.get("nombre") or f"proceso_{pid}").strip()[:24]
+    if not memoria_lab.asignar(pid, memoria):
+        return _err(f"No hay espacio suficiente para '{nombre}' ({memoria} MB).", 409)
+    _lab_siguiente_pid += 1
+    _lab_nombres[pid] = nombre
+    estado = _estado_memlab()
+    decision = estado["memoria"].get("decision")
+    return _ok(estado, msg=f"'{nombre}' asignado (PID {pid})." + (f" {decision}" if decision else ""))
+
+
+@app.route("/api/memlab/process/<int:pid>", methods=["DELETE"])
+def api_memlab_liberar(pid: int):
+    if memoria_lab.liberar(pid) == 0:
+        return _err(f"PID {pid} no tiene memoria asignada.", 404)
+    _lab_nombres.pop(pid, None)
+    return _ok(_estado_memlab(), msg=f"PID {pid} liberado.")
+
+
+@app.route("/api/memlab/reset", methods=["POST"])
+def api_memlab_reset():
+    """Vacía la memoria. En el mapa de bits además vuelve a pedir la unidad."""
+    global _lab_siguiente_pid
+    if memoria_lab.requiere_unidad:
+        memoria_lab.olvidar_unidad()
+        msg = "Memoria reiniciada. Define la unidad de asignación."
+    else:
+        memoria_lab.resetear()
+        msg = "Memoria vaciada."
+    _lab_nombres.clear()
+    _lab_siguiente_pid = 1
+    return _ok(_estado_memlab(), msg=msg)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# API — Reemplazo de páginas (apartado independiente, sin estado)
+# ══════════════════════════════════════════════════════════════════════
+@app.route("/api/paging/simulate", methods=["POST"])
+def api_paging_simular():
+    data = request.get_json(silent=True) or {}
+    try:
+        refs = parsear_referencias(str(data.get("referencias", "")))
+        marcos = int(data.get("marcos", 3))
+        intervalo = int(data.get("intervalo_nru", 4))
+        resultado = simular(str(data.get("algoritmo", "fifo")), refs, marcos, intervalo)
+        resultado["comparacion"] = comparar(refs, marcos, intervalo)
+    except (ValueError, TypeError) as exc:
+        return _err(str(exc))
+    return _ok({"resultado": resultado})
+
+
+# ══════════════════════════════════════════════════════════════════════
 # API — Procesos
 # ══════════════════════════════════════════════════════════════════════
 @app.route("/api/process", methods=["POST"])
@@ -332,7 +475,7 @@ def api_log():
 # ══════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     print("╔══════════════════════════════════════════╗")
-    print("║   Hephaestus Core — Servidor Flask       ║")
+    print("║   BALJ OS — Servidor Flask       ║")
     print("║   http://localhost:5000                   ║")
     print("╚══════════════════════════════════════════╝")
     app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)

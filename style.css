@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════
-   HEPHAESTUS CORE — Modern High-Contrast Tech Theme Stylesheet
+   BALJ OS — Modern High-Contrast Tech Theme Stylesheet
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ── Custom Properties ──────────────────────────────────────────────── */
@@ -1316,3 +1316,241 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Módulos independientes + módulo de Memoria (mapa de bits 0/1)
+   ═══════════════════════════════════════════════════════════════════ */
+[hidden] { display: none !important; }
+
+/* Selector de módulo */
+.mode-switch {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.6rem 1.25rem 0;
+}
+.mode-tab {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.55rem 1rem;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.mode-tab:hover { color: var(--text-main); border-color: var(--border-active); }
+.mode-tab.active {
+  color: var(--text-pure);
+  background: var(--bg-card-header);
+  border-color: var(--accent-sky);
+}
+
+/* En el módulo de memoria se ocultan los controles de CPU/planificación */
+body.mode-memory .nav-center-stats,
+body.mode-memory .nav-actions { display: none; }
+
+.memory-view {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem 1.25rem 1.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.mem-help { color: var(--text-secondary); font-size: 0.85rem; line-height: 1.5; margin-bottom: 0.9rem; }
+.mem-help code, .mem-formula b { font-family: var(--font-mono); }
+
+.mem-setup-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+.mem-fixed {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card-inner);
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+.mem-unit-group { min-width: 190px; }
+
+.mem-formula {
+  margin-top: 0.75rem;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  background: var(--bg-card-inner);
+  border: 1px dashed var(--border-active);
+  border-radius: var(--radius-sm);
+}
+.mem-formula:empty { display: none; }
+.mem-formula-dim { color: var(--text-dim); }
+
+.mem-message { min-height: 1.2rem; margin-top: 0.6rem; font-size: 0.8rem; color: var(--text-muted); }
+.mem-message[data-kind="ok"]  { color: #34d399; }
+.mem-message[data-kind="err"] { color: #f87171; }
+
+/* Espacio de trabajo bloqueado hasta definir la unidad */
+.mem-workspace { border: 0; padding: 0; min-width: 0; }
+.mem-workspace.is-locked > .card { opacity: 0.4; filter: grayscale(0.6); pointer-events: none; }
+.mem-locked-note {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent-amber);
+  padding: 0 0 0.6rem;
+}
+
+/* Mapa de bits: solo 0 y 1, sin colores por proceso */
+.memory-grid--bits {
+  display: grid;
+  --cell: 34px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--cell), 1fr));
+  gap: 3px;
+}
+.memory-grid--bits[data-size="md"] { --cell: 26px; }
+.memory-grid--bits[data-size="sm"] { --cell: 15px; }
+.bit-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 3px;
+  border: 1px solid var(--border-subtle);
+  user-select: none;
+}
+.memory-grid--bits[data-size="md"] .bit-cell { font-size: 0.7rem; }
+.memory-grid--bits[data-size="sm"] .bit-cell { font-size: 0.55rem; border-radius: 2px; }
+.bit-cell.zero { color: var(--text-dim); background: rgba(255, 255, 255, 0.03); }
+.bit-cell.one  { color: var(--text-pure); background: rgba(255, 255, 255, 0.22); border-color: rgba(255, 255, 255, 0.4); }
+
+.bit-sample { font-family: var(--font-mono); margin-right: 0.25rem; color: var(--text-dim); }
+.bit-sample.one { color: var(--text-pure); }
+
+.mem-alloc-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.mem-alloc-form .form-group { flex: 1 1 160px; }
+.mem-workspace .memory-stats-grid { margin-top: 0.9rem; grid-template-columns: repeat(3, 1fr); }
+.mem-workspace .memory-stat-wide { grid-column: 1 / -1; }
+
+@media (max-width: 768px) {
+  .memory-view { padding: 0.75rem; }
+  .mem-workspace .memory-stats-grid { grid-template-columns: 1fr 1fr; }
+}
+
+.status-badge.ready {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Sub-navegación de apartados y reemplazo de páginas
+   ═══════════════════════════════════════════════════════════════════ */
+.algo-nav, .fit-nav { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.fit-nav { margin-bottom: 0.8rem; }
+
+.algo-tab, .fit-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.fit-tab { font-size: 0.8rem; padding: 0.4rem 0.75rem; background: var(--bg-card-inner); }
+.algo-tab:hover, .fit-tab:hover { color: var(--text-main); border-color: var(--border-active); }
+.algo-tab.active, .fit-tab.active {
+  color: var(--text-pure);
+  background: var(--bg-card-header);
+  border-color: var(--accent-sky);
+}
+
+.mem-section { display: grid; gap: 1rem; }
+.algo-desc { color: var(--text-secondary); font-size: 0.82rem; line-height: 1.5; margin-bottom: 0.9rem; }
+
+.pg-refs-group { flex: 1 1 320px; }
+.pg-small { width: 120px; }
+
+.pg-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.9rem 0 0.6rem;
+}
+.pg-controls input[type="range"] { flex: 1 1 140px; accent-color: var(--accent-sky); }
+.pg-step-label { color: var(--text-muted); font-size: 0.8rem; min-width: 64px; text-align: right; }
+
+.pg-table-wrap {
+  overflow-x: auto;
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.5rem;
+}
+.pg-table { border-collapse: separate; border-spacing: 3px; font-family: var(--font-mono); font-size: 0.85rem; }
+.pg-table th, .pg-table td {
+  min-width: 44px;
+  padding: 0.4rem 0.3rem;
+  text-align: center;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+  white-space: nowrap;
+}
+.pg-table th { color: var(--text-muted); font-weight: 600; }
+.pg-table thead th:not(.pg-rowhead) { color: var(--accent-sky); background: rgba(56, 189, 248, 0.08); }
+.pg-table .pg-rowhead { text-align: left; min-width: 118px; position: sticky; left: 0; background: var(--bg-card-header); z-index: 1; }
+.pg-table td.pg-new { background: rgba(245, 158, 11, 0.22); color: var(--text-pure); font-weight: 700; }
+.pg-table td.pg-fault { color: #fbbf24; font-size: 0.68rem; }
+.pg-table td.pg-hit { color: #34d399; font-size: 0.68rem; }
+.pg-table .pg-current { outline: 1px solid var(--accent-sky); outline-offset: -1px; }
+.pg-table .pg-hidden { visibility: hidden; }
+.pg-table .pg-extra td { font-size: 0.65rem; color: var(--text-muted); }
+.pg-rm { display: block; font-size: 0.55rem; color: var(--text-muted); font-weight: 500; }
+
+.pg-detail {
+  margin: 0.7rem 0 0.9rem;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.83rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--bg-card-inner);
+  border-left: 3px solid var(--accent-sky);
+  border-radius: var(--radius-sm);
+}
+.pg-stats { grid-template-columns: repeat(3, 1fr); }
+
+.pg-compare-title { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin: 0.4rem 0 0.5rem; }
+.pg-compare { display: grid; gap: 0.4rem; }
+.pg-bar-row { display: grid; grid-template-columns: 48px 1fr 32px; align-items: center; gap: 0.6rem; font-size: 0.78rem; color: var(--text-muted); }
+.pg-bar-row.active { color: var(--text-pure); }
+.pg-bar-track { height: 12px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; overflow: hidden; }
+.pg-bar-fill { height: 100%; background: rgba(148, 163, 184, 0.6); border-radius: 6px; }
+.pg-bar-row.active .pg-bar-fill { background: var(--accent-sky); }
+.pg-bar-val { text-align: right; }
+
+.mem-message-global { margin: 0.25rem 0 0; }
+/* La columna «Cálculo» (⌈tamaño/unidad⌉) solo existe en el mapa de bits */
+#mem-proc-table:not([data-modo="bitmap"]) th:nth-child(4),
+#mem-proc-table:not([data-modo="bitmap"]) td:nth-child(4) { display: none; }

@@ -58,15 +58,15 @@ class Kernel:
     en tiempo real mediante el patrón Strategy.
 
     Attributes:
-        nombre (str): Nombre del SO (por defecto 'Hephaestus Core').
+        nombre (str): Nombre del SO (por defecto 'BALJ OS').
         version (str): Versión del SO.
     """
 
     def __init__(
         self,
-        nombre: str = "Hephaestus Core",
+        nombre: str = "BALJ OS",
         version: str = "0.1.0",
-        ram_mb: int = 4096,
+        ram_mb: int = 2048,
     ) -> None:
         self._nombre: str = nombre
         self._version: str = version

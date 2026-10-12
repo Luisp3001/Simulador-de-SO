@@ -1,7 +1,7 @@
 """
 os_simulator
 ============
-Paquete raíz del Simulador de Sistema Operativo — Hephaestus Core.
+Paquete raíz del Simulador de Sistema Operativo — BALJ OS.
 """
 from os_simulator.core.kernel import Kernel
 

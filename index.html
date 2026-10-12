@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hephaestus Core — Simulador de Sistema Operativo</title>
+    <title>BALJ OS — Simulador de Sistema Operativo</title>
     <meta name="description" content="Simulador de Sistema Operativo con interfaz moderna. CPU, Memoria, Planificación de Procesos, Archivos y E/S.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,7 +21,7 @@
             <div class="nav-brand">
                 <div class="brand-icon">🔥</div>
                 <div>
-                    <h1 class="brand-title">HEPHAESTUS CORE</h1>
+                    <h1 class="brand-title">BALJ OS</h1>
                     <p class="brand-sub">Simulador de Sistema Operativo v0.1.0</p>
                 </div>
             </div>
@@ -36,6 +36,11 @@
                     <span class="stat-icon">⏱</span>
                     <span class="stat-label">Uptime:</span>
                     <strong id="system-time" class="stat-value font-mono">00:00:00</strong>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-icon">🧠</span>
+                    <span class="stat-label">RAM:</span>
+                    <strong id="ram-summary" class="stat-value font-mono">0 / 2048 MB</strong>
                 </div>
                 <div class="stat-pill">
                     <span class="stat-icon">🔄</span>
@@ -60,6 +65,14 @@
                 </button>
             </div>
         </header>
+
+        <!-- SELECTOR DE MÓDULO: cada módulo es independiente -->
+        <nav class="mode-switch" aria-label="Módulo del simulador">
+            <button class="mode-tab active" id="tab-processes" type="button">⚡ Procesos y planificación</button>
+            <button class="mode-tab" id="tab-memory" type="button">🧠 Administración de memoria</button>
+        </nav>
+
+        <div id="view-processes">
 
         <!-- SCHEDULER BANNER / TOOLBAR -->
         <div class="scheduler-toolbar">
@@ -143,78 +156,6 @@
                             <div class="stat-kv">
                                 <span class="kv-label">Velocidad Reloj</span>
                                 <span class="kv-value font-mono">3200 MHz</span>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- MEMORY PANEL -->
-                <section class="card panel-memory" id="panel-memory">
-                    <div class="card-header">
-                        <div class="card-title">
-                            <span class="card-icon">🧠</span>
-                            <h2>Memoria RAM</h2>
-                        </div>
-                        <span class="kv-badge font-mono" id="mem-usage">0%</span>
-                    </div>
-
-                    <div class="card-body">
-                        <div class="memory-controls">
-                            <label for="memory-strategy-select" class="control-label">Administrador:</label>
-                            <select id="memory-strategy-select" class="form-input form-select memory-strategy-select">
-                                <option value="bitmap">Mapa de bits</option>
-                                <option value="lista_enlazada">Lista enlazada (First Fit)</option>
-                                <option value="buddy">Sistema de asociados (Buddy)</option>
-                            </select>
-                            <button class="btn btn-primary-outline btn-sm" id="btn-apply-memory">Aplicar</button>
-                        </div>
-
-                        <!-- Mapa físico entregado por el backend -->
-                        <div class="memory-grid-label" id="memory-grid-label">Mapa físico:</div>
-                        <div class="memory-grid" id="memory-grid"></div>
-                        <div class="memory-legend">
-                            <span><i class="legend-swatch free"></i>Libre</span>
-                            <span><i class="legend-swatch used"></i>Asignado (color por PID)</span>
-                        </div>
-
-                        <div class="memory-stats-grid">
-                            <div class="mem-stat-item">
-                                <span class="mem-stat-label">Total</span>
-                                <strong class="mem-stat-val" id="mem-total">4096 MB</strong>
-                            </div>
-                            <div class="mem-stat-item">
-                                <span class="mem-stat-label">Disponible</span>
-                                <strong class="mem-stat-val text-success" id="mem-available">4096 MB</strong>
-                            </div>
-                            <div class="mem-stat-item">
-                                <span class="mem-stat-label">Solicitada</span>
-                                <strong class="mem-stat-val" id="mem-requested">0 MB</strong>
-                            </div>
-                            <div class="mem-stat-item">
-                                <span class="mem-stat-label">Reservada</span>
-                                <strong class="mem-stat-val" id="mem-reserved">0 MB</strong>
-                            </div>
-                            <div class="mem-stat-item">
-                                <span class="mem-stat-label">Frag. interna</span>
-                                <strong class="mem-stat-val text-warning" id="mem-internal-frag">0 MB</strong>
-                            </div>
-                            <div class="mem-stat-item">
-                                <span class="mem-stat-label">Frag. externa</span>
-                                <strong class="mem-stat-val text-warning" id="mem-external-frag">0 MB</strong>
-                            </div>
-                            <div class="mem-stat-item memory-stat-wide">
-                                <span class="mem-stat-label">Mayor bloque utilizable</span>
-                                <strong class="mem-stat-val" id="mem-largest-hole">4096 MB</strong>
-                            </div>
-                        </div>
-
-                        <!-- Modern Memory Bar -->
-                        <div class="modern-progress-container" id="mem-liquid" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
-                            <div class="modern-progress-fill" id="mem-liquid-fill" style="width: 0%;">
-                                <div class="progress-glow"></div>
-                            </div>
-                            <div class="progress-overlay-text" id="mem-liquid-label">
-                                <span id="mem-liquid-pct">0%</span> en uso
                             </div>
                         </div>
                     </div>
@@ -391,6 +332,185 @@
             </section>
 
         </main>
+
+        </div><!-- /view-processes -->
+
+        <!-- ═══════════════ MÓDULO INDEPENDIENTE: MEMORIA ═══════════════ -->
+        <div id="view-memory" class="memory-view" hidden>
+
+            <!-- Navegación entre apartados (numeración = índice del informe) -->
+            <nav class="algo-nav" id="algo-nav" aria-label="Apartados de administración de memoria">
+                <button type="button" class="algo-tab active" data-sec="bitmap">Mapa de bits</button>
+                <button type="button" class="algo-tab" data-sec="lista">Lista ligada</button>
+                <button type="button" class="algo-tab" data-sec="buddy">Sistema de asociados</button>
+                <button type="button" class="algo-tab" data-sec="paginas">Reemplazo de páginas</button>
+            </nav>
+
+            <div class="mem-message mem-message-global" id="mem-message" role="status"></div>
+
+            <!-- ── Asignación de memoria: mapa de bits / lista ligada / buddy ── -->
+            <div id="sec-alloc" class="mem-section">
+
+                <!-- Unidad de asignación: SOLO para el mapa de bits -->
+                <section class="card mem-setup" id="mem-setup">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">🧩</span>
+                            <h2>Unidad de asignación</h2>
+                        </div>
+                        <span class="status-badge idle" id="unit-status">Sin definir</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="mem-help">
+                            La <strong>unidad de asignación</strong> es el tamaño del bloque en que se divide la RAM.
+                            La RAM es fija; la unidad la eliges tú (debe dividir exactamente la RAM).
+                            Hasta que la definas, la memoria permanece desactivada.
+                        </p>
+                        <div class="mem-setup-row">
+                            <div class="mem-fixed">
+                                <span class="mem-stat-label">RAM del sistema (constante)</span>
+                                <strong class="mem-stat-val" id="ram-fixed">2048 MB</strong>
+                            </div>
+                            <div class="form-group mem-unit-group">
+                                <label for="unit-input" class="form-label">Unidad de asignación (MB)</label>
+                                <input type="number" id="unit-input" class="form-input" min="1" step="1" placeholder="ej. 64">
+                            </div>
+                            <button class="btn btn-primary" id="btn-set-unit" type="button">Definir unidad</button>
+                            <button class="btn btn-secondary" id="btn-reset-memory" type="button">Reiniciar memoria</button>
+                        </div>
+                        <div class="mem-formula" id="grid-formula">
+                            Malla = RAM / unidad = <span class="mem-formula-dim">— define una unidad para calcularla</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Espacio de trabajo (en el mapa de bits queda bloqueado hasta definir la unidad) -->
+                <fieldset class="mem-workspace" id="mem-workspace" disabled>
+                    <legend class="mem-locked-note" id="mem-locked-note">🔒 Define la unidad de asignación para activar la memoria</legend>
+
+                    <section class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <span class="card-icon">🧠</span>
+                                <h2 id="mem-section-title">Mapa de bits</h2>
+                            </div>
+                            <span class="kv-badge font-mono" id="mem-usage">0%</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="fit-nav" id="fit-nav" hidden>
+                                <button type="button" class="fit-tab" data-alg="first_fit">First fit</button>
+                                <button type="button" class="fit-tab" data-alg="next_fit">Next fit</button>
+                                <button type="button" class="fit-tab" data-alg="best_fit">Best fit</button>
+                                <button type="button" class="fit-tab" data-alg="worst_fit">Worst fit</button>
+                            </div>
+                            <p class="algo-desc" id="algo-desc"></p>
+
+                            <div class="memory-grid-label" id="memory-grid-label">Mapa de bits:</div>
+                            <div class="memory-grid" id="memory-grid"></div>
+                            <div class="memory-legend" id="memory-legend">
+                                <span><b class="bit-sample">0</b> Libre</span>
+                                <span><b class="bit-sample one">1</b> Ocupado</span>
+                            </div>
+
+                            <div class="mem-alloc-form">
+                                <div class="form-group">
+                                    <label for="mem-proc-name" class="form-label">Nombre del proceso</label>
+                                    <input type="text" id="mem-proc-name" class="form-input" placeholder="ej. navegador.exe" maxlength="24">
+                                </div>
+                                <div class="form-group">
+                                    <label for="mem-proc-size" class="form-label">Tamaño (MB)</label>
+                                    <input type="number" id="mem-proc-size" class="form-input" min="1" value="100">
+                                </div>
+                                <button class="btn btn-accent" id="btn-mem-alloc" type="button">Asignar a memoria</button>
+                            </div>
+                            <div class="mem-formula" id="proc-formula"></div>
+
+                            <div class="memory-stats-grid">
+                                <div class="mem-stat-item"><span class="mem-stat-label">Total</span><strong class="mem-stat-val" id="mem-total">2048 MB</strong></div>
+                                <div class="mem-stat-item"><span class="mem-stat-label">Disponible</span><strong class="mem-stat-val text-success" id="mem-available">2048 MB</strong></div>
+                                <div class="mem-stat-item"><span class="mem-stat-label">Solicitada</span><strong class="mem-stat-val" id="mem-requested">0 MB</strong></div>
+                                <div class="mem-stat-item"><span class="mem-stat-label">Reservada</span><strong class="mem-stat-val" id="mem-reserved">0 MB</strong></div>
+                                <div class="mem-stat-item"><span class="mem-stat-label">Frag. interna</span><strong class="mem-stat-val text-warning" id="mem-internal-frag">0 MB</strong></div>
+                                <div class="mem-stat-item"><span class="mem-stat-label">Frag. externa</span><strong class="mem-stat-val text-warning" id="mem-external-frag">0 MB</strong></div>
+                                <div class="mem-stat-item memory-stat-wide"><span class="mem-stat-label">Mayor bloque utilizable</span><strong class="mem-stat-val" id="mem-largest-hole">2048 MB</strong></div>
+                            </div>
+
+                            <div class="metrics-table-wrapper">
+                                <table class="metrics-table" id="mem-proc-table" data-modo="bitmap">
+                                    <thead>
+                                        <tr><th>PID</th><th>Nombre</th><th>Tamaño</th><th>Cálculo</th><th>Reservado</th><th id="th-pos">Posición</th><th></th></tr>
+                                    </thead>
+                                    <tbody id="mem-proc-tbody">
+                                        <tr><td colspan="7" class="metrics-empty">Sin procesos en memoria.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+                </fieldset>
+            </div>
+
+            <!-- ── Reemplazo de páginas: OPT / NRU / FIFO / LRU ── -->
+            <div id="sec-paging" class="mem-section" hidden>
+                <section class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">📄</span>
+                            <h2>Algoritmos de reemplazo de páginas</h2>
+                        </div>
+                        <span class="kv-badge font-mono" id="pg-badge">—</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="fit-nav" id="pg-nav">
+                            <button type="button" class="fit-tab active" data-alg="opt">OPT</button>
+                            <button type="button" class="fit-tab" data-alg="nru">NRU</button>
+                            <button type="button" class="fit-tab" data-alg="fifo">FIFO</button>
+                            <button type="button" class="fit-tab" data-alg="lru">Demostración LRU</button>
+                        </div>
+                        <p class="algo-desc" id="pg-desc"></p>
+
+                        <div class="mem-setup-row">
+                            <div class="form-group pg-refs-group">
+                                <label for="pg-refs" class="form-label">Cadena de referencias (páginas separadas por espacio; «w» = escritura)</label>
+                                <input type="text" id="pg-refs" class="form-input font-mono" value="7 0 1 2 0 3 0 4 2 3 0 3 2 1 2 0 1 7 0 1">
+                            </div>
+                            <div class="form-group pg-small">
+                                <label for="pg-frames" class="form-label">Marcos</label>
+                                <input type="number" id="pg-frames" class="form-input" min="1" max="10" value="3">
+                            </div>
+                            <div class="form-group pg-small" id="pg-nru-box" hidden>
+                                <label for="pg-interval" class="form-label">Limpiar R cada (refs)</label>
+                                <input type="number" id="pg-interval" class="form-input" min="1" value="4">
+                            </div>
+                            <button class="btn btn-primary" id="btn-pg-run" type="button">Simular</button>
+                        </div>
+                        <div class="mem-message" id="pg-message" role="status"></div>
+
+                        <div id="pg-result" hidden>
+                            <div class="pg-controls">
+                                <button class="btn btn-secondary btn-sm" id="pg-prev" type="button">◀ Anterior</button>
+                                <button class="btn btn-secondary btn-sm" id="pg-next" type="button">Siguiente ▶</button>
+                                <button class="btn btn-primary-outline btn-sm" id="pg-play" type="button">▶ Reproducir</button>
+                                <button class="btn btn-primary-outline btn-sm" id="pg-all" type="button">Mostrar todo</button>
+                                <input type="range" id="pg-slider" min="0" max="0" value="0" aria-label="Paso de la simulación">
+                                <span class="pg-step-label font-mono" id="pg-step-label">0 / 0</span>
+                            </div>
+                            <div class="pg-table-wrap"><table class="pg-table" id="pg-table"></table></div>
+                            <div class="pg-detail" id="pg-detail"></div>
+
+                            <div class="memory-stats-grid pg-stats">
+                                <div class="mem-stat-item"><span class="mem-stat-label">Referencias</span><strong class="mem-stat-val" id="pg-total">0</strong></div>
+                                <div class="mem-stat-item"><span class="mem-stat-label">Fallas de página</span><strong class="mem-stat-val text-warning" id="pg-faults">0</strong></div>
+                                <div class="mem-stat-item"><span class="mem-stat-label">Aciertos</span><strong class="mem-stat-val text-success" id="pg-hits">0</strong></div>
+                            </div>
+                            <div class="pg-compare-title">Comparación de fallas con la misma cadena y los mismos marcos</div>
+                            <div class="pg-compare" id="pg-compare"></div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div><!-- /view-memory -->
+
 
     </div>
 

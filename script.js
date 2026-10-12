@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════
-   HEPHAESTUS CORE — Frontend Client
+   BALJ OS — Frontend Client
    Conectado al backend Python (Flask) via REST API.
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -10,11 +10,9 @@ const API = 'http://localhost:5000/api';
 // ─── ESTADO LOCAL (solo UI) ────────────────────────────────────────────
 let logOffset      = 0;
 let pollTimer      = null;
-let bubbleTimer    = null;
 let uptimeTimer    = null;
 let uptimeSeconds  = 0;
 let isRunning      = false;
-let memLevelHigh   = false;
 
 // ─── DOM REFS ─────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -33,21 +31,71 @@ const dom = {
     processList:   $('process-list'),
     processEmpty:  $('process-empty'),
 
+    ramSummary:    $('ram-summary'),
+
+    // Módulo de memoria (independiente)
+    tabProcesses:  $('tab-processes'),
+    tabMemory:     $('tab-memory'),
+    viewProcesses: $('view-processes'),
+    viewMemory:    $('view-memory'),
+    unitInput:     $('unit-input'),
+    unitStatus:    $('unit-status'),
+    btnSetUnit:    $('btn-set-unit'),
+    btnResetMem:   $('btn-reset-memory'),
+    ramFixed:      $('ram-fixed'),
+    gridFormula:   $('grid-formula'),
+    procFormula:   $('proc-formula'),
+    memMessage:    $('mem-message'),
+    memSetup:      $('mem-setup'),
+    memProcTable:  $('mem-proc-table'),
+    memWorkspace:  $('mem-workspace'),
+    memLockedNote: $('mem-locked-note'),
     memGrid:       $('memory-grid'),
+    memGridLabel:  $('memory-grid-label'),
+    memLegend:     $('memory-legend'),
+    memUsage:      $('mem-usage'),
     memTotal:      $('mem-total'),
     memAvail:      $('mem-available'),
-    memUsage:      $('mem-usage'),
-    memLiquidFill: $('mem-liquid-fill'),
-    memLiquidPct:  $('mem-liquid-pct'),
-    memLiquid:     $('mem-liquid'),
-    memGridLabel:  $('memory-grid-label'),
     memRequested:  $('mem-requested'),
     memReserved:   $('mem-reserved'),
     memInternal:   $('mem-internal-frag'),
     memExternal:   $('mem-external-frag'),
     memLargest:    $('mem-largest-hole'),
-    memoryStrategySelect: $('memory-strategy-select'),
-    btnApplyMemory: $('btn-apply-memory'),
+    algoNav:       $('algo-nav'),
+    secAlloc:      $('sec-alloc'),
+    secPaging:     $('sec-paging'),
+    fitNav:        $('fit-nav'),
+    algoDesc:      $('algo-desc'),
+    memSectionTitle: $('mem-section-title'),
+    thPos:         $('th-pos'),
+
+    // Reemplazo de páginas
+    pgNav:         $('pg-nav'),
+    pgDesc:        $('pg-desc'),
+    pgRefs:        $('pg-refs'),
+    pgFrames:      $('pg-frames'),
+    pgInterval:    $('pg-interval'),
+    pgNruBox:      $('pg-nru-box'),
+    pgRun:         $('btn-pg-run'),
+    pgMessage:     $('pg-message'),
+    pgResult:      $('pg-result'),
+    pgBadge:       $('pg-badge'),
+    pgPrev:        $('pg-prev'),
+    pgNext:        $('pg-next'),
+    pgPlay:        $('pg-play'),
+    pgAll:         $('pg-all'),
+    pgSlider:      $('pg-slider'),
+    pgStepLabel:   $('pg-step-label'),
+    pgTable:       $('pg-table'),
+    pgDetail:      $('pg-detail'),
+    pgTotal:       $('pg-total'),
+    pgFaults:      $('pg-faults'),
+    pgHits:        $('pg-hits'),
+    pgCompare:     $('pg-compare'),
+    memProcName:   $('mem-proc-name'),
+    memProcSize:   $('mem-proc-size'),
+    btnMemAlloc:   $('btn-mem-alloc'),
+    memProcTbody:  $('mem-proc-tbody'),
 
     logOutput:     $('log-output'),
 
@@ -151,60 +199,210 @@ function updateCpuGauge(pct) {
     if (dom.cpuUsage) dom.cpuUsage.textContent = `${Math.round(pct)}%`;
 }
 
-// ─── MEMORIA ──────────────────────────────────────────────────────────
-function memoryColor(pid) {
+// ─── RESUMEN DE RAM (modo procesos) ────────────────────────────────────
+function updateRamSummary(memData) {
+    if (!memData || !dom.ramSummary) return;
+    dom.ramSummary.textContent = `${memData.usada_mb} / ${memData.total_mb} MB`;
+}
+
+// ─── MÓDULO DE MEMORIA INDEPENDIENTE ───────────────────────────────────
+let memLab = null;   // último estado recibido de /api/memlab
+
+function memoryColor(pid) {          // solo para Lista enlazada / Buddy
     const hue = (Number(pid) * 67 + 185) % 360;
     return `hsl(${hue} 72% 48%)`;
 }
 
-function renderMemoryBlocks(memData) {
-    const bloques = memData.bloques || [];
-    dom.memGrid.innerHTML = '';
-    dom.memGrid.classList.toggle('memory-grid--cells', memData.tipo_vista === 'celdas');
-    dom.memGrid.classList.toggle('memory-grid--segments', memData.tipo_vista !== 'celdas');
+function showMemMessage(msg, kind = 'info') {
+    dom.memMessage.textContent = msg || '';
+    dom.memMessage.dataset.kind = kind;
+}
 
-    bloques.forEach((item) => {
+function setMode(mode) {
+    const mem = mode === 'memory';
+    document.body.classList.toggle('mode-memory', mem);
+    dom.viewProcesses.hidden = mem;
+    dom.viewMemory.hidden = !mem;
+    dom.tabProcesses.classList.toggle('active', !mem);
+    dom.tabMemory.classList.toggle('active', mem);
+    if (mem) loadMemLab();
+}
+
+async function loadMemLab() {
+    const data = await apiGet('/memlab');
+    if (data.ok) {
+        if (secActual !== 'paginas') secActual = seccionDe(data.activo);
+        renderMemLab(data);
+        updateSectionUI();
+    } else showMemMessage('No se pudo consultar el módulo de memoria. ¿Está corriendo server.py?', 'err');
+}
+
+// Mapa de bits: solo 0 y 1, sin colores por proceso.
+function renderBitmap(mem, procesos) {
+    const nombres = new Map(procesos.map(p => [p.pid, p.nombre]));
+    const n = mem.mapa_bits.length;
+    dom.memGrid.className = 'memory-grid memory-grid--bits';
+    dom.memGrid.dataset.size = n <= 64 ? 'lg' : (n <= 256 ? 'md' : 'sm');
+    dom.memGrid.innerHTML = '';
+    mem.bloques.forEach((b, i) => {
+        const cell = document.createElement('div');
+        const bit = mem.mapa_bits[i];
+        cell.className = `bit-cell ${bit ? 'one' : 'zero'}`;
+        cell.textContent = String(bit);
+        const dueño = bit ? `PID ${b.pid} (${nombres.get(b.pid) || '?'})` : 'Libre';
+        cell.title = `Casilla ${i} · ${b.inicio}–${b.inicio + b.tamaño} MB · ${dueño}`;
+        dom.memGrid.appendChild(cell);
+    });
+}
+
+// Lista enlazada / Buddy: vista por segmentos (cada uno con su propio color).
+function renderSegments(mem) {
+    dom.memGrid.className = 'memory-grid memory-grid--segments';
+    delete dom.memGrid.dataset.size;
+    dom.memGrid.innerHTML = '';
+    mem.bloques.forEach((item) => {
         const block = document.createElement('div');
         block.className = `mem-block ${item.libre ? 'free' : 'used'}`;
-        if (memData.tipo_vista !== 'celdas') {
-            block.style.flexGrow = String(item.tamaño);
-        }
+        block.style.flexGrow = String(item.tamaño);
         if (!item.libre) {
             block.style.backgroundColor = memoryColor(item.pid);
             block.style.borderColor = memoryColor(item.pid);
         }
         const dueño = item.libre ? 'Libre' : `PID ${item.pid}`;
         block.title = `${dueño} · ${item.inicio}–${item.inicio + item.tamaño} MB · ${item.tamaño} MB`;
-        if (memData.tipo_vista !== 'celdas' && item.tamaño >= 256) {
+        if (item.tamaño >= 256) {
             block.textContent = item.libre ? `${item.tamaño} MB` : `PID ${item.pid} · ${item.tamaño} MB`;
         }
         dom.memGrid.appendChild(block);
     });
 }
 
-function updateMemory(memData) {
-    const { total_mb, usada_mb, disponible_mb, uso_pct } = memData;
-    renderMemoryBlocks(memData);
+function rangoCasillas(marcos) {
+    if (!marcos || marcos.length === 0) return '—';
+    return marcos.length === 1 ? `${marcos[0]}` : `${marcos[0]}–${marcos[marcos.length - 1]}`;
+}
 
-    dom.memTotal.textContent = `${total_mb} MB`;
-    dom.memAvail.textContent = `${disponible_mb} MB`;
-    dom.memUsage.textContent = `${Math.round(uso_pct)}%`;
-    dom.memRequested.textContent = `${memData.solicitada_mb} MB`;
-    dom.memReserved.textContent = `${memData.reservada_mb} MB`;
-    dom.memInternal.textContent = `${memData.fragmentacion_interna_mb} MB`;
-    dom.memExternal.textContent = `${memData.fragmentacion_externa_mb} MB`;
-    dom.memLargest.textContent = `${memData.mayor_hueco_libre_mb} MB`;
-    dom.memGridLabel.textContent = `${memData.algoritmo_nombre} · mapa físico:`;
-    dom.memoryStrategySelect.value = memData.algoritmo;
+function renderMemProcs(data) {
+    const esBitmap = data.memoria.algoritmo === 'bitmap';
+    const u = data.unidad_mb;
+    if (!data.procesos.length) {
+        dom.memProcTbody.innerHTML = '<tr><td colspan="7" class="metrics-empty">Sin procesos en memoria.</td></tr>';
+        return;
+    }
+    dom.memProcTbody.innerHTML = data.procesos.map(p => {
+        const calculo = esBitmap ? `⌈${p.solicitada_mb} / ${u}⌉ = ${p.unidades}` : '—';
+        const casillas = esBitmap ? rangoCasillas(p.marcos) : (p.inicio !== null && p.inicio !== undefined ? `${p.inicio} MB` : '—');
+        return `<tr>
+            <td>${p.pid}</td><td>${escapeHtml(p.nombre)}</td><td>${p.solicitada_mb} MB</td>
+            <td class="font-mono">${calculo}</td><td>${p.reservada_mb} MB</td>
+            <td class="font-mono">${casillas}</td>
+            <td><button class="proc-kill" title="Liberar memoria" data-pid="${p.pid}">✕</button></td>
+        </tr>`;
+    }).join('');
+}
 
-    dom.memLiquidFill.style.width = `${uso_pct}%`;
-    dom.memLiquidFill.style.setProperty('--pb-liquid-level', `${uso_pct}%`);
-    dom.memLiquidPct.textContent = `${Math.round(uso_pct)}%`;
-    dom.memLiquid.setAttribute('aria-valuenow', Math.round(uso_pct));
+function escapeHtml(t) {
+    return String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 
-    const high = uso_pct >= 80;
-    dom.memLiquid.dataset.level = high ? 'high' : 'normal';
-    memLevelHigh = high;
+function updateGridFormula(data) {
+    if (data.unidad_definida) {
+        const total = data.ram_mb / data.unidad_mb;
+        dom.gridFormula.innerHTML =
+            `Malla = RAM / unidad = <b>${data.ram_mb} MB / ${data.unidad_mb} MB = ${total} casillas</b>`;
+    } else {
+        dom.gridFormula.innerHTML =
+            'Malla = RAM / unidad = <span class="mem-formula-dim">— define una unidad para calcularla</span>';
+    }
+}
+
+// Vista previa de la fórmula de un proceso mientras se escribe el tamaño.
+function updateProcFormula() {
+    if (!memLab || !memLab.unidad_definida || memLab.memoria.algoritmo !== 'bitmap') {
+        dom.procFormula.innerHTML = '';
+        return;
+    }
+    const size = parseInt(dom.memProcSize.value, 10);
+    if (!size || size < 1) { dom.procFormula.innerHTML = ''; return; }
+    const u = memLab.unidad_mb;
+    dom.procFormula.innerHTML =
+        `Casillas del proceso = ⌈tamaño / unidad⌉ = <b>⌈${size} / ${u}⌉ = ${Math.ceil(size / u)}</b> bits en 1`;
+}
+
+function renderMemLab(data) {
+    memLab = data;
+    const mem = data.memoria;
+    const definida = data.unidad_definida;
+
+    // Unidad de asignación: SOLO existe en el mapa de bits
+    const requiere = data.requiere_unidad;
+    const listo = data.listo;
+    dom.memSetup.hidden = !requiere;
+    if (requiere) {
+        dom.ramFixed.textContent = `${data.ram_mb} MB`;
+        dom.unitStatus.textContent = definida ? `Unidad: ${data.unidad_mb} MB` : 'Sin definir';
+        dom.unitStatus.className = `status-badge ${definida ? 'ready' : 'idle'}`;
+        if (definida && document.activeElement !== dom.unitInput) dom.unitInput.value = data.unidad_mb;
+        dom.unitInput.title = `Valores válidos: ${data.unidades_validas.join(', ')}`;
+        updateGridFormula(data);
+    }
+
+    // La memoria se activa cuando termina la definición de la unidad (mapa de bits);
+    // la lista ligada y el sistema de asociados no la necesitan.
+    dom.memWorkspace.disabled = !listo;
+    dom.memWorkspace.classList.toggle('is-locked', !listo);
+    dom.memLockedNote.hidden = listo;
+    dom.btnResetMem.disabled = !definida;
+    dom.memProcTable.dataset.modo = mem.algoritmo === 'bitmap' ? 'bitmap' : 'otro';
+
+    // Apartado activo (cada apartado conserva su propio estado)
+    dom.memSectionTitle.textContent = mem.algoritmo_nombre;
+    dom.algoDesc.textContent = ALGO_DESC[mem.algoritmo] || '';
+    dom.fitNav.querySelectorAll('.fit-tab').forEach(b => b.classList.toggle('active', b.dataset.alg === mem.algoritmo));
+    dom.thPos.textContent = mem.algoritmo === 'bitmap' ? 'Casillas' : 'Dirección';
+
+    // Mapa
+    const esBitmap = mem.algoritmo === 'bitmap';
+    dom.memGridLabel.textContent = esBitmap
+        ? `Mapa de bits · ${mem.total_unidades} casillas de ${mem.unidad_mb} MB:`
+        : `${mem.algoritmo_nombre} · mapa físico:`;
+    dom.memLegend.hidden = !esBitmap;
+    if (esBitmap) renderBitmap(mem, data.procesos); else renderSegments(mem);
+
+    // Estadísticas
+    dom.memTotal.textContent = `${mem.total_mb} MB`;
+    dom.memAvail.textContent = `${mem.disponible_mb} MB`;
+    dom.memUsage.textContent = `${Math.round(mem.uso_pct)}%`;
+    dom.memRequested.textContent = `${mem.solicitada_mb} MB`;
+    dom.memReserved.textContent = `${mem.reservada_mb} MB`;
+    dom.memInternal.textContent = `${mem.fragmentacion_interna_mb} MB`;
+    dom.memExternal.textContent = `${mem.fragmentacion_externa_mb} MB`;
+    dom.memLargest.textContent = `${mem.mayor_hueco_libre_mb} MB`;
+
+    renderMemProcs(data);
+    updateProcFormula();
+}
+
+async function memAction(promise) {
+    const res = await promise;
+    if (res.ok) {
+        renderMemLab(res);
+        showMemMessage(res.msg, 'ok');
+    } else {
+        showMemMessage(res.msg || 'Operación rechazada.', 'err');
+    }
+    return res;
+}
+
+const setUnit      = () => memAction(apiPost('/memlab/unit', { unidad: parseInt(dom.unitInput.value, 10) }));
+const resetMemory  = () => memAction(apiPost('/memlab/reset'));
+const freeMemProc  = (pid) => memAction(apiDelete(`/memlab/process/${pid}`));
+async function allocMemProc() {
+    const res = await memAction(apiPost('/memlab/process', {
+        nombre: dom.memProcName.value.trim(),
+        memoria_mb: parseInt(dom.memProcSize.value, 10),
+    }));
+    if (res.ok) dom.memProcName.value = '';
 }
 
 // ─── PROCESOS ─────────────────────────────────────────────────────────
@@ -340,16 +538,167 @@ async function applyScheduler() {
     }
 }
 
-async function applyMemoryStrategy() {
-    const tipo = dom.memoryStrategySelect.value;
-    const res = await apiPost('/memory/strategy', { tipo });
+
+// ─── NAVEGACIÓN ENTRE APARTADOS ────────────────────────────────
+const FITS = ['first_fit', 'next_fit', 'best_fit', 'worst_fit'];
+let secActual = 'bitmap';
+
+const ALGO_DESC = {
+    bitmap:    'La RAM se divide en unidades de asignación y hay un bit por unidad: 0 = libre, 1 = ocupada. Un proceso necesita ⌈tamaño / unidad⌉ casillas contiguas en 0; se toma la primera secuencia disponible.',
+    first_fit: 'Recorre la lista desde el inicio y usa el primer hueco donde cabe el proceso; el sobrante queda como un nuevo nodo libre.',
+    next_fit:  'Igual que First Fit, pero la búsqueda continúa desde donde terminó la última asignación (lista circular).',
+    best_fit:  'Revisa toda la lista y elige el hueco más pequeño en el que cabe el proceso (deja el menor sobrante).',
+    worst_fit: 'Revisa toda la lista (toda la memoria libre) y siempre elige el hueco más grande, aunque otro se ajuste mejor; el sobrante queda como un nuevo hueco.',
+    buddy:     'Los bloques son potencias de 2. Un bloque se parte en dos «asociados» hasta el tamaño justo; al liberar, se fusiona con su asociado si también está libre.',
+};
+const PG_DESC = {
+    opt:  'Óptimo: reemplaza la página que tardará más en volver a usarse. No es implementable en la práctica (requiere conocer el futuro), pero sirve como referencia.',
+    nru:  'No usada recientemente: cada página tiene bits R (referenciada) y M (modificada). Sale una de la clase más baja: 0 = R0M0, 1 = R0M1, 2 = R1M0, 3 = R1M1. R se limpia periódicamente. Desempate: la más antigua.',
+    fifo: 'Primera en entrar, primera en salir: reemplaza la página que lleva más tiempo en memoria, sin importar cuánto se usa (puede sufrir la anomalía de Belady).',
+    lru:  'Menos recientemente usada: reemplaza la página que lleva más tiempo sin referenciarse. Aproxima a OPT usando el pasado. La fila «Recencia» muestra el orden de menos a más reciente.',
+};
+
+const seccionDe = alg => FITS.includes(alg) ? 'lista' : alg;
+
+function updateSectionUI() {
+    dom.algoNav.querySelectorAll('.algo-tab').forEach(b => b.classList.toggle('active', b.dataset.sec === secActual));
+    dom.secAlloc.hidden = secActual === 'paginas';
+    dom.secPaging.hidden = secActual !== 'paginas';
+    dom.fitNav.hidden = secActual !== 'lista';
+    if (secActual === 'paginas') updatePagingHeader();
+}
+
+async function selectSection(sec) {
+    secActual = sec;
+    updateSectionUI();
+    if (sec === 'paginas') return;
+    const alg = sec === 'lista'
+        ? (memLab && FITS.includes(memLab.activo) ? memLab.activo : 'first_fit')
+        : sec;
+    await selectAlgorithm(alg);
+}
+
+async function selectAlgorithm(alg) {
+    const res = await apiPost('/memlab/strategy', { tipo: alg });
+    if (res.ok) { renderMemLab(res); showMemMessage('', 'info'); }
+    else showMemMessage(res.msg, 'err');
+}
+
+// ─── REEMPLAZO DE PÁGINAS ──────────────────────────────────────────────
+let pgAlg = 'opt';
+let pgData = null;      // resultado de /api/paging/simulate
+let pgStep = 0;         // pasos visibles (0..n)
+let pgTimer = null;
+
+function updatePagingHeader() {
+    dom.pgNav.querySelectorAll('.fit-tab').forEach(b => b.classList.toggle('active', b.dataset.alg === pgAlg));
+    dom.pgDesc.textContent = PG_DESC[pgAlg];
+    dom.pgNruBox.hidden = pgAlg !== 'nru';
+}
+
+function pgStop() {
+    clearInterval(pgTimer);
+    pgTimer = null;
+    dom.pgPlay.textContent = '▶ Reproducir';
+}
+
+async function runPaging() {
+    pgStop();
+    const res = await apiPost('/paging/simulate', {
+        algoritmo: pgAlg,
+        referencias: dom.pgRefs.value,
+        marcos: parseInt(dom.pgFrames.value, 10),
+        intervalo_nru: parseInt(dom.pgInterval.value, 10) || 4,
+    });
     if (!res.ok) {
-        appendLog(res.msg, 'err');
-        await pollState();
+        dom.pgMessage.textContent = res.msg;
+        dom.pgMessage.dataset.kind = 'err';
         return;
     }
-    appendLog(`Memoria → ${res.nombre}`, 'ok');
-    await pollState();
+    dom.pgMessage.textContent = '';
+    pgData = res.resultado;
+    pgStep = pgData.pasos.length;
+    dom.pgResult.hidden = false;
+    renderPaging();
+}
+
+function renderPaging() {
+    const r = pgData;
+    if (!r) return;
+    const n = r.pasos.length;
+    dom.pgSlider.max = n;
+    dom.pgSlider.value = pgStep;
+    dom.pgStepLabel.textContent = `${pgStep} / ${n}`;
+
+    const cabecera = r.pasos.map((p, i) =>
+        `<th class="${colClass(i)}">${p.ref}${p.escritura ? '<sup>w</sup>' : ''}</th>`).join('');
+    let html = `<thead><tr><th class="pg-rowhead">Referencia</th>${cabecera}</tr></thead><tbody>`;
+    for (let m = 0; m < r.marcos; m++) {
+        html += `<tr><th class="pg-rowhead">Marco ${m}</th>`;
+        r.pasos.forEach((p, i) => {
+            const c = p.marcos[m];
+            const nuevo = p.falla && p.posicion === m;
+            const rm = c && r.algoritmo === 'nru' ? `<span class="pg-rm">R${c.r} M${c.m}</span>` : '';
+            html += `<td class="${colClass(i)}${nuevo ? ' pg-new' : ''}">${c ? c.pagina : ''}${rm}</td>`;
+        });
+        html += '</tr>';
+    }
+    if (r.algoritmo === 'lru') {
+        html += '<tr class="pg-extra"><th class="pg-rowhead">Recencia (− → +)</th>' +
+            r.pasos.map((p, i) => `<td class="${colClass(i)}">${p.recencia.join(' ')}</td>`).join('') + '</tr>';
+    }
+    html += '<tr class="pg-faultrow"><th class="pg-rowhead">Resultado</th>' +
+        r.pasos.map((p, i) => `<td class="${colClass(i)} ${p.falla ? 'pg-fault' : 'pg-hit'}">${p.falla ? 'Falla' : 'Acierto'}</td>`).join('') +
+        '</tr></tbody>';
+    dom.pgTable.innerHTML = html;
+
+    // Detalle del paso actual
+    if (pgStep === 0) {
+        dom.pgDetail.textContent = 'Pulsa «Siguiente» o «Reproducir» para avanzar referencia por referencia.';
+    } else {
+        const p = r.pasos[pgStep - 1];
+        dom.pgDetail.innerHTML = `<b>Referencia ${pgStep}: página ${p.ref}${p.escritura ? ' (escritura)' : ''}.</b> ${escapeHtml(p.detalle)}`;
+    }
+
+    // Estadísticas (hasta el paso visible)
+    const vistos = r.pasos.slice(0, pgStep);
+    const fallas = vistos.filter(p => p.falla).length;
+    dom.pgTotal.textContent = `${pgStep} / ${r.total}`;
+    dom.pgFaults.textContent = `${fallas}` + (pgStep ? ` (${(fallas / pgStep * 100).toFixed(1)}%)` : '');
+    dom.pgHits.textContent = `${pgStep - fallas}`;
+    dom.pgBadge.textContent = `${r.fallas} fallas`;
+
+    // Comparación de los 4 algoritmos
+    const max = Math.max(...r.comparacion.map(c => c.fallas), 1);
+    dom.pgCompare.innerHTML = r.comparacion.map(c => `
+        <div class="pg-bar-row${c.algoritmo === r.algoritmo ? ' active' : ''}">
+            <span class="pg-bar-name">${c.algoritmo.toUpperCase()}</span>
+            <div class="pg-bar-track"><div class="pg-bar-fill" style="width:${c.fallas / max * 100}%"></div></div>
+            <span class="pg-bar-val font-mono">${c.fallas}</span>
+        </div>`).join('');
+}
+
+function colClass(i) {
+    if (i >= pgStep) return 'pg-hidden';
+    return i === pgStep - 1 ? 'pg-current' : '';
+}
+
+function pgGoto(n) {
+    if (!pgData) return;
+    pgStep = Math.max(0, Math.min(pgData.pasos.length, n));
+    renderPaging();
+}
+
+function pgTogglePlay() {
+    if (!pgData) return;
+    if (pgTimer) { pgStop(); return; }
+    if (pgStep >= pgData.pasos.length) pgStep = 0;
+    dom.pgPlay.textContent = '⏸ Pausar';
+    pgTimer = setInterval(() => {
+        if (pgStep >= pgData.pasos.length) { pgStop(); return; }
+        pgGoto(pgStep + 1);
+    }, 700);
+    pgGoto(pgStep + 1);
 }
 
 // ─── POLLING: actualizar UI desde servidor ────────────────────────────
@@ -378,34 +727,14 @@ async function pollState() {
         dom.cpuStatus.className    = 'stat-val status-chip idle';
     }
 
-    // Memoria
-    updateMemory(data.memoria);
+    // RAM (resumen; el detalle vive en el módulo de memoria)
+    updateRamSummary(data.memoria);
 
     // Procesos
     renderProcessList(data.procesos);
-    dom.btnApplyMemory.disabled = data.procesos.length > 0;
-    dom.btnApplyMemory.title = data.procesos.length > 0
-        ? 'Finaliza todos los procesos antes de cambiar el algoritmo'
-        : 'Aplicar algoritmo de memoria';
 
     // Métricas
     updateMetrics(data.procesos_terminados, data.scheduler);
-}
-
-// ─── BUBBLES ──────────────────────────────────────────────────────────
-function spawnBubble() {
-    if (!isRunning || !memLevelHigh) return;
-    const bubble = document.createElement('div');
-    bubble.className = 'pb-bubble';
-    const size     = 3 + Math.random() * 8;
-    const left     = 5 + Math.random() * 90;
-    const duration = 0.8 + Math.random() * 1.5;
-    bubble.style.width             = `${size}px`;
-    bubble.style.height            = `${size}px`;
-    bubble.style.left              = `${left}%`;
-    bubble.style.animationDuration = `${duration}s`;
-    dom.memLiquidFill.appendChild(bubble);
-    setTimeout(() => { if (bubble.parentNode) bubble.remove(); }, duration * 1000);
 }
 
 // ─── CONTROLES ────────────────────────────────────────────────────────
@@ -419,14 +748,12 @@ function setRunningUI(running) {
 
     if (running) {
         pollTimer   = setInterval(pollState, 1000);
-        bubbleTimer = setInterval(spawnBubble, 150);
         uptimeTimer = setInterval(() => {
             uptimeSeconds++;
             dom.time.textContent = formatTime(uptimeSeconds);
         }, 1000);
     } else {
         clearInterval(pollTimer);
-        clearInterval(bubbleTimer);
         clearInterval(uptimeTimer);
         uptimeSeconds = 0;
         dom.time.textContent = '00:00:00';
@@ -493,7 +820,7 @@ async function confirmNewProcess() {
     const nice      = parseInt(dom.inputNice ? dom.inputNice.value : '0', 10) || 0;
     const finalNombre = nombre || `proceso_${Date.now()}`;
 
-    if (memoria < 1 || memoria > 4096) { alert('Memoria fuera de rango (1–4096 MB)'); return; }
+    if (memoria < 1 || memoria > 2048) { alert('Memoria fuera de rango (1–2048 MB)'); return; }
     if (burst   < 1 || burst   > 100)  { alert('Ráfaga fuera de rango (1–100 ciclos)'); return; }
 
     const res = await apiPost('/process', {
@@ -538,9 +865,43 @@ if (dom.schedulerSelect) {
 if (dom.btnApplyScheduler) {
     dom.btnApplyScheduler.addEventListener('click', applyScheduler);
 }
-if (dom.btnApplyMemory) {
-    dom.btnApplyMemory.addEventListener('click', applyMemoryStrategy);
-}
+
+// Selector de módulo + módulo de memoria
+dom.tabProcesses.addEventListener('click', () => setMode('processes'));
+dom.tabMemory.addEventListener('click',    () => setMode('memory'));
+dom.btnSetUnit.addEventListener('click',   setUnit);
+dom.unitInput.addEventListener('keydown',  e => { if (e.key === 'Enter') setUnit(); });
+dom.btnResetMem.addEventListener('click',  resetMemory);
+dom.algoNav.addEventListener('click', e => {
+    const b = e.target.closest('.algo-tab');
+    if (b) selectSection(b.dataset.sec);
+});
+dom.fitNav.addEventListener('click', e => {
+    const b = e.target.closest('.fit-tab');
+    if (b) selectAlgorithm(b.dataset.alg);
+});
+dom.pgNav.addEventListener('click', e => {
+    const b = e.target.closest('.fit-tab');
+    if (!b) return;
+    pgAlg = b.dataset.alg;
+    updatePagingHeader();
+    runPaging();
+});
+dom.pgRun.addEventListener('click', runPaging);
+dom.pgRefs.addEventListener('keydown', e => { if (e.key === 'Enter') runPaging(); });
+dom.pgPrev.addEventListener('click', () => { pgStop(); pgGoto(pgStep - 1); });
+dom.pgNext.addEventListener('click', () => { pgStop(); pgGoto(pgStep + 1); });
+dom.pgAll.addEventListener('click',  () => { pgStop(); pgGoto(pgData ? pgData.pasos.length : 0); });
+dom.pgPlay.addEventListener('click', pgTogglePlay);
+dom.pgSlider.addEventListener('input', () => { pgStop(); pgGoto(parseInt(dom.pgSlider.value, 10)); });
+dom.btnMemAlloc.addEventListener('click',  allocMemProc);
+dom.memProcSize.addEventListener('input',  updateProcFormula);
+dom.memProcSize.addEventListener('keydown', e => { if (e.key === 'Enter') allocMemProc(); });
+dom.memProcName.addEventListener('keydown', e => { if (e.key === 'Enter') allocMemProc(); });
+dom.memProcTbody.addEventListener('click', e => {
+    const btn = e.target.closest('.proc-kill');
+    if (btn) freeMemProc(parseInt(btn.dataset.pid, 10));
+});
 
 // ─── INIT ─────────────────────────────────────────────────────────────
 (async function init() {
@@ -553,10 +914,9 @@ if (dom.btnApplyMemory) {
         const data = await apiGet('/state?log_offset=0');
         if (data.ok) {
             logOffset = data.log_offset;
-            updateMemory(data.memoria);
+            updateRamSummary(data.memoria);
             renderProcessList(data.procesos);
             updateMetrics(data.procesos_terminados, data.scheduler);
-            dom.btnApplyMemory.disabled = data.procesos.length > 0;
             if (data.activo) {
                 appendLog('Servidor activo detectado — reanudando sesión.', 'sys');
                 setRunningUI(true);
