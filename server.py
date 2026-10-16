@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from os_simulator.core.kernel import Kernel
 from os_simulator.memory.memory import ALGORITMOS_MEMORIA, Memoria, unidades_validas
 from os_simulator.memory.paginacion import ALGORITMOS_PAGINAS, comparar, parsear_referencias, simular
+from os_simulator.hardware.usb import MonitorUSB, crear_backend
 from os_simulator.processes.schedulers import SCHEDULERS_DISPONIBLES
 
 # ══════════════════════════════════════════════════════════════════════
@@ -54,6 +55,12 @@ kernel: Kernel = Kernel(nombre="BALJ OS", version="0.1.0", ram_mb=RAM_MB)
 memoria_lab: Memoria = Memoria(capacidad_total=RAM_MB, algoritmo="bitmap")
 _lab_nombres: dict[int, str] = {}
 _lab_siguiente_pid = 1
+
+# ── Dispositivos de E/S (USB) ────────────────────────────────────────
+# El monitor corre en su propio hilo y detecta conexiones/desconexiones solo.
+# USB_BACKEND = auto (por defecto) | wmi | sysfs | sim
+monitor_usb: MonitorUSB = MonitorUSB(crear_backend(os.environ.get("USB_BACKEND", "auto")))
+monitor_usb.iniciar()
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -473,6 +480,40 @@ def api_log():
 # ══════════════════════════════════════════════════════════════════════
 # Punto de entrada
 # ══════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+# API — Dispositivos de E/S (USB)
+# ══════════════════════════════════════════════════════════════════════
+@app.route("/api/usb", methods=["GET"])
+def api_usb_estado():
+    """Listado actual de dispositivos USB + driver. «version» cambia con cada conexión/desconexión."""
+    return jsonify(monitor_usb.estado())
+
+
+@app.route("/api/usb/sim/connect", methods=["POST"])
+def api_usb_sim_conectar():
+    if not monitor_usb.simulado:
+        return _err("El modo simulado no está activo: se están leyendo dispositivos USB reales.", 409)
+    clave = str((request.get_json(silent=True) or {}).get("modelo", ""))
+    try:
+        monitor_usb.backend.conectar(clave)
+    except KeyError:
+        return _err(f"Modelo de dispositivo desconocido: '{clave}'.")
+    monitor_usb.sincronizar()
+    return _ok(monitor_usb.estado(), msg="Dispositivo simulado conectado.")
+
+
+@app.route("/api/usb/sim/disconnect", methods=["POST"])
+def api_usb_sim_desconectar():
+    if not monitor_usb.simulado:
+        return _err("El modo simulado no está activo: se están leyendo dispositivos USB reales.", 409)
+    did = str((request.get_json(silent=True) or {}).get("id", ""))
+    if not monitor_usb.backend.desconectar(did):
+        return _err("Ese dispositivo ya no está conectado.", 404)
+    monitor_usb.sincronizar()
+    return _ok(monitor_usb.estado(), msg="Dispositivo simulado desconectado.")
+
+
+
 if __name__ == "__main__":
     print("╔══════════════════════════════════════════╗")
     print("║   BALJ OS — Servidor Flask       ║")

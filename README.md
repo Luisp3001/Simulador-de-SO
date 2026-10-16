@@ -116,3 +116,17 @@ Se accede desde la pestaña **Administración de memoria** (independiente de CPU
 ### Avance 3 · Sección 6 — navegación y capturas
 Pestaña **Administración de memoria**: Mapa de bits · Lista ligada (First/Next/Best/Worst Fit) · Sistema de asociados · Reemplazo de páginas (OPT, NRU, FIFO, LRU). La unidad de asignación solo existe en el mapa de bits.
 Las capturas para el informe están en `capturas/`. Pruebas: `python tests/test_memory_algorithms.py` (con `PYTHONPATH=.`).
+
+---
+
+## 🔌 Dispositivos de E/S (USB)
+
+Pestaña **Dispositivos de E/S**: lista los dispositivos USB conectados (mouse, teclado, memoria USB, parlantes, audífonos, proyector, etc.) con la información del **driver** ligado a cada uno (driver, proveedor, versión, fecha, archivo INF, firma y drivers de sus interfaces). Inicia con «No se ha conectado ningún dispositivo» y se actualiza sola al conectar o desconectar.
+
+* **Windows (real):** usa **WMI** (`Win32_PnPEntity`, `Win32_DiskDrive`) para listar y **pywin32** (`pythoncom`) para COM; el driver se lee del registro de Windows (rápido: `Win32_PnPSignedDriver` tarda decenas de segundos y no se usa). Los cambios se detectan por evento (`Win32_DeviceChangeEvent`), agrupando la ráfaga de eventos de cada USB en un solo escaneo.
+  Instalación: `uv sync` (o `pip install wmi pywin32`). Ejecutar con `uv run python server.py`.
+* Los dispositivos que ya estaban conectados al abrir el simulador se ocultan por defecto (casilla «Incluir los dispositivos ya conectados» para verlos).
+* **Linux:** lee `/sys/bus/usb/devices`. **Sin USB accesible:** modo simulado con botones para conectar/desconectar dispositivos de prueba.
+* Forzar el origen: variable de entorno `USB_BACKEND` = `wmi` | `sysfs` | `sim` (por defecto `auto`). En PowerShell: `$env:USB_BACKEND="sim"; uv run python server.py`.
+* API: `GET /api/usb` (listado + `version` que cambia con cada conexión/desconexión).
+* **Medir tiempos (Windows):** `uv run python diagnostico_usb.py`. Con `USB_DEBUG=1` el servidor imprime la duración de cada escaneo y la latencia evento→lista.

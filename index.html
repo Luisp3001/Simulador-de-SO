@@ -70,6 +70,7 @@
         <nav class="mode-switch" aria-label="Módulo del simulador">
             <button class="mode-tab active" id="tab-processes" type="button">⚡ Procesos y planificación</button>
             <button class="mode-tab" id="tab-memory" type="button">🧠 Administración de memoria</button>
+            <button class="mode-tab" id="tab-io" type="button">🔌 Dispositivos de E/S</button>
         </nav>
 
         <div id="view-processes">
@@ -156,48 +157,6 @@
                             <div class="stat-kv">
                                 <span class="kv-label">Velocidad Reloj</span>
                                 <span class="kv-value font-mono">3200 MHz</span>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- I/O DEVICES PANEL -->
-                <section class="card panel-io" id="panel-io">
-                    <div class="card-header">
-                        <div class="card-title">
-                            <span class="card-icon">🔌</span>
-                            <h2>Dispositivos E/S</h2>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="device-list">
-                            <div class="device-item">
-                                <div class="device-info">
-                                    <span class="device-icon">⌨️</span>
-                                    <span class="device-name">Teclado</span>
-                                </div>
-                                <span class="status-chip ok">OK</span>
-                            </div>
-                            <div class="device-item">
-                                <div class="device-info">
-                                    <span class="device-icon">🖱️</span>
-                                    <span class="device-name">Ratón</span>
-                                </div>
-                                <span class="status-chip ok">OK</span>
-                            </div>
-                            <div class="device-item">
-                                <div class="device-info">
-                                    <span class="device-icon">💾</span>
-                                    <span class="device-name">Disco Duro (500 GB)</span>
-                                </div>
-                                <span class="status-chip ok">OK</span>
-                            </div>
-                            <div class="device-item">
-                                <div class="device-info">
-                                    <span class="device-icon">🌐</span>
-                                    <span class="device-name">Tarjeta de Red</span>
-                                </div>
-                                <span class="status-chip ok">OK</span>
                             </div>
                         </div>
                     </div>
@@ -511,6 +470,48 @@
             </div>
         </div><!-- /view-memory -->
 
+        <!-- ═══════════════ MÓDULO INDEPENDIENTE: DISPOSITIVOS DE E/S (USB) ═══════════════ -->
+        <div id="view-io" class="io-view" hidden>
+            <section class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="card-icon">🔌</span>
+                        <h2>Dispositivos de E/S · USB</h2>
+                    </div>
+                    <span class="status-badge ready" id="usb-live"><span class="live-dot"></span>Actualización automática</span>
+                </div>
+                <div class="card-body">
+                    <p class="mem-help">
+                        Lista de dispositivos USB conectados con la información del <strong>driver</strong> que el sistema
+                        operativo tiene ligado a cada uno. El listado se actualiza solo al conectar o desconectar.
+                    </p>
+                    <div class="io-toolbar">
+                        <label class="io-check">
+                            <input type="checkbox" id="usb-incluir-previos">
+                            Incluir los dispositivos ya conectados al abrir el simulador
+                        </label>
+                        <span class="io-source" id="usb-source"></span>
+                    </div>
+                    <div class="io-sim" id="usb-sim" hidden>
+                        <span class="io-sim-label">🧪 Modo simulado</span>
+                        <select class="form-input form-select" id="usb-sim-modelo"></select>
+                        <button class="btn btn-primary-outline btn-sm" id="usb-sim-conectar" type="button">Conectar dispositivo</button>
+                    </div>
+                    <div class="io-error" id="usb-error" hidden></div>
+                    <div id="usb-list" class="usb-list"></div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-header">
+                    <div class="card-title"><span class="card-icon">🕒</span><h2>Actividad</h2></div>
+                </div>
+                <div class="card-body">
+                    <ul class="usb-events" id="usb-events"></ul>
+                </div>
+            </section>
+        </div><!-- /view-io -->
+
 
     </div>
 
@@ -556,6 +557,7 @@
     </div>
 
     <script src="script.js"></script>
+    <script src="usb.js"></script>
 </body>
 
 </html>

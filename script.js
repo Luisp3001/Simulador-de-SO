@@ -38,6 +38,8 @@ const dom = {
     tabMemory:     $('tab-memory'),
     viewProcesses: $('view-processes'),
     viewMemory:    $('view-memory'),
+    tabIo:         $('tab-io'),
+    viewIo:        $('view-io'),
     unitInput:     $('unit-input'),
     unitStatus:    $('unit-status'),
     btnSetUnit:    $('btn-set-unit'),
@@ -220,12 +222,16 @@ function showMemMessage(msg, kind = 'info') {
 
 function setMode(mode) {
     const mem = mode === 'memory';
-    document.body.classList.toggle('mode-memory', mem);
-    dom.viewProcesses.hidden = mem;
+    const io  = mode === 'io';
+    document.body.classList.toggle('mode-memory', mem || io);   // oculta CPU/planificador fuera de su módulo
+    dom.viewProcesses.hidden = mem || io;
     dom.viewMemory.hidden = !mem;
-    dom.tabProcesses.classList.toggle('active', !mem);
+    dom.viewIo.hidden = !io;
+    dom.tabProcesses.classList.toggle('active', !mem && !io);
     dom.tabMemory.classList.toggle('active', mem);
+    dom.tabIo.classList.toggle('active', io);
     if (mem) loadMemLab();
+    if (window.UsbUI) window.UsbUI.activar(io);
 }
 
 async function loadMemLab() {
@@ -869,6 +875,7 @@ if (dom.btnApplyScheduler) {
 // Selector de módulo + módulo de memoria
 dom.tabProcesses.addEventListener('click', () => setMode('processes'));
 dom.tabMemory.addEventListener('click',    () => setMode('memory'));
+dom.tabIo.addEventListener('click',        () => setMode('io'));
 dom.btnSetUnit.addEventListener('click',   setUnit);
 dom.unitInput.addEventListener('keydown',  e => { if (e.key === 'Enter') setUnit(); });
 dom.btnResetMem.addEventListener('click',  resetMemory);

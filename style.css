@@ -1554,3 +1554,60 @@ body.mode-memory .nav-actions { display: none; }
 /* La columna «Cálculo» (⌈tamaño/unidad⌉) solo existe en el mapa de bits */
 #mem-proc-table:not([data-modo="bitmap"]) th:nth-child(4),
 #mem-proc-table:not([data-modo="bitmap"]) td:nth-child(4) { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Dispositivos de E/S (USB)
+   ═══════════════════════════════════════════════════════════════════ */
+body.mode-io .nav-center-stats,
+body.mode-io .nav-actions { display: none; }
+
+.io-view { display: grid; gap: 1rem; padding: 1rem 1.25rem 1.5rem; max-width: 1100px; margin: 0 auto; width: 100%; }
+.io-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.9rem; }
+.io-check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer; }
+.io-source { font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono); }
+.io-sim { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; padding: 0.6rem 0.8rem; margin-bottom: 0.9rem;
+          border: 1px dashed var(--border-active); border-radius: var(--radius-sm); background: var(--bg-card-inner); }
+.io-sim-label { font-size: 0.8rem; font-weight: 600; color: var(--accent-amber); }
+.io-sim select { max-width: 280px; }
+.io-error { margin-bottom: 0.9rem; padding: 0.6rem 0.8rem; border-radius: var(--radius-sm); font-size: 0.82rem;
+            color: #fca5a5; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.35); }
+
+.live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #34d399; margin-right: 0.4rem;
+            animation: live-pulse 1.6s ease-in-out infinite; }
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+.usb-list { display: grid; gap: 0.8rem; }
+.usb-empty { text-align: center; padding: 2.2rem 1rem; color: var(--text-muted); border: 1px dashed var(--border-subtle);
+             border-radius: var(--radius-md); background: var(--bg-card-inner); }
+.usb-empty > span { font-size: 2rem; opacity: 0.6; }
+.usb-empty p { margin: 0.4rem 0 0; font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); }
+.usb-empty small { display: block; margin-top: 0.4rem; font-size: 0.75rem; color: var(--text-dim); }
+
+.usb-card { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-card-inner); padding: 0.85rem 1rem; }
+.usb-card.usb-new { animation: usb-in 1.4s ease-out; }
+@keyframes usb-in { 0% { border-color: #34d399; box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.35); transform: translateY(-6px); opacity: 0; }
+                    40% { opacity: 1; transform: none; } 100% { box-shadow: none; } }
+.usb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; }
+.usb-icon { font-size: 1.6rem; }
+.usb-title { flex: 1 1 220px; display: flex; flex-direction: column; min-width: 0; }
+.usb-title strong { font-size: 0.95rem; color: var(--text-pure); overflow-wrap: anywhere; }
+.usb-title small { font-size: 0.75rem; color: var(--text-muted); }
+.usb-type { font-size: 0.72rem; font-weight: 600; color: var(--accent-sky); border: 1px solid var(--border-active);
+            border-radius: 999px; padding: 0.15rem 0.6rem; }
+.usb-meta { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0.55rem 0 0.2rem; font-size: 0.74rem; color: var(--text-dim); }
+.usb-drivers { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.6rem; margin-top: 0.6rem; }
+.drv { border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.55rem 0.7rem; background: rgba(255, 255, 255, 0.02); }
+.drv-title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem; }
+.drv-row { display: flex; justify-content: space-between; gap: 0.8rem; font-size: 0.78rem; padding: 0.12rem 0; }
+.drv-row span { color: var(--text-dim); flex: none; }
+.drv-row b { color: var(--text-main); font-family: var(--font-mono); font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+
+.usb-events { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; max-height: 220px; overflow-y: auto; }
+.usb-events li { font-size: 0.8rem; color: var(--text-secondary); display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem;
+                 padding: 0.3rem 0.5rem; border-left: 3px solid var(--border-active); background: var(--bg-card-inner); border-radius: 3px; }
+.usb-events li.conectado { border-left-color: #34d399; }
+.usb-events li.desconectado { border-left-color: #f87171; }
+.usb-events li.vacio { color: var(--text-dim); border-left-color: var(--border-subtle); }
+.usb-events time { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-dim); }
+.usb-events small { color: var(--text-dim); }
+.status-chip.warn { color: #fbbf24; background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); }
