@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from os_simulator.core.kernel import Kernel
 from os_simulator.memory.memory import ALGORITMOS_MEMORIA, Memoria, unidades_validas
 from os_simulator.memory.paginacion import ALGORITMOS_PAGINAS, comparar, parsear_referencias, simular
+from os_simulator.filesystem.almacenamiento import ALGORITMOS_ARCHIVOS, ALGORITMOS_DISPONIBLES, crear_gestor
 from os_simulator.hardware.usb import MonitorUSB, crear_backend
 from os_simulator.processes.schedulers import SCHEDULERS_DISPONIBLES
 
@@ -55,6 +56,13 @@ kernel: Kernel = Kernel(nombre="BALJ OS", version="0.1.0", ram_mb=RAM_MB)
 memoria_lab: Memoria = Memoria(capacidad_total=RAM_MB, algoritmo="bitmap")
 _lab_nombres: dict[int, str] = {}
 _lab_siguiente_pid = 1
+
+# ── Módulo de archivos INDEPENDIENTE (Avance 5) ──────────────────────
+# Disco de 20 bloques (0-19), igual al escenario del enunciado. Empieza
+# en el Algoritmo 1 (asignación continua); los Algoritmos 2 y 3 todavía
+# no tienen gestor (ver os_simulator/filesystem/almacenamiento.py).
+TOTAL_BLOQUES_DISCO = 20
+filelab_gestor = crear_gestor("continua", TOTAL_BLOQUES_DISCO)
 
 # ── Dispositivos de E/S (USB) ────────────────────────────────────────
 # El monitor corre en su propio hilo y detecta conexiones/desconexiones solo.
@@ -353,6 +361,149 @@ def api_paging_simular():
     except (ValueError, TypeError) as exc:
         return _err(str(exc))
     return _ok({"resultado": resultado})
+
+
+# ══════════════════════════════════════════════════════════════════════
+# API — Módulo de archivos independiente (/api/filelab) — Avance 5
+# ══════════════════════════════════════════════════════════════════════
+def _rango_bloques(info: dict) -> str:
+    inicio, longitud = info["bloque_inicio"], info["longitud"]
+    if longitud == 1:
+        return f"bloque {inicio}"
+    return f"bloques {inicio}–{inicio + longitud - 1}"
+
+
+def _estado_filelab() -> dict:
+    estado = filelab_gestor.estado()
+    archivos = [
+        {"nombre": nombre, **datos}
+        for nombre, datos in sorted(estado["archivos"].items())
+    ]
+    return {
+        "ok": True,
+        "total_bloques": TOTAL_BLOQUES_DISCO,
+        "activo": filelab_gestor.clave,
+        "algoritmos": ALGORITMOS_ARCHIVOS,
+        "algoritmos_disponibles": list(ALGORITMOS_DISPONIBLES),
+        "disco": estado,
+        "archivos": archivos,
+    }
+
+
+@app.route("/api/filelab", methods=["GET"])
+def api_filelab_estado():
+    """4. Mostrar estado del disco / 5. Mostrar espacio disponible."""
+    return jsonify(_estado_filelab())
+
+
+@app.route("/api/filelab/strategy", methods=["POST"])
+def api_filelab_estrategia():
+    """Cambia el algoritmo activo (solo con el disco vacío)."""
+    global filelab_gestor
+    data = request.get_json(silent=True) or {}
+    tipo = str(data.get("tipo", "continua")).lower().strip()
+    if filelab_gestor.archivos:
+        return _err("No se puede cambiar el algoritmo mientras haya archivos en el disco.", 409)
+    try:
+        nuevo_gestor = crear_gestor(tipo, TOTAL_BLOQUES_DISCO)
+    except NotImplementedError as exc:
+        return _err(str(exc), 409)
+    except ValueError as exc:
+        return _err(str(exc), 400)
+    filelab_gestor = nuevo_gestor
+    return _ok(_estado_filelab(), msg=f"Algoritmo activo: {filelab_gestor.nombre}.")
+
+
+@app.route("/api/filelab/file", methods=["POST"])
+def api_filelab_crear():
+    """1. Crear archivo."""
+    data = request.get_json(silent=True) or {}
+    nombre = str(data.get("nombre", "")).strip()
+    if not nombre:
+        return _err("Ingresa un nombre de archivo.")
+    try:
+        bloques = int(data.get("bloques"))
+    except (TypeError, ValueError):
+        return _err("El tamaño debe ser un número entero de bloques.")
+    if bloques <= 0:
+        return _err("El tamaño debe ser mayor a 0 bloques.")
+
+    try:
+        info = filelab_gestor.crear_archivo(nombre, bloques)
+    except (FileExistsError, RuntimeError) as exc:
+        return _err(str(exc), 409)
+    except ValueError as exc:
+        return _err(str(exc))
+
+    estado = _estado_filelab()
+    return _ok(estado, msg=f"'{nombre}' creado en {_rango_bloques(info)}.")
+
+
+@app.route("/api/filelab/disco", methods=["GET"])
+def api_filelab_disco():
+    """4. Mostrar estado del disco: cada bloque ocupado o libre."""
+    estado = _estado_filelab()
+    ocupados = [b["indice"] for b in estado["disco"]["bloques"] if not b["libre"]]
+    libres = estado["disco"]["bloques_libres"]
+    return _ok(
+        estado,
+        msg=(
+            f"Disco de {estado['total_bloques']} bloques (0–{estado['total_bloques'] - 1}). "
+            f"Ocupados: {len(ocupados)}. Libres: {len(libres)}."
+        ),
+    )
+
+
+@app.route("/api/filelab/espacio", methods=["GET"])
+def api_filelab_espacio():
+    """5. Mostrar espacio disponible."""
+    estado = _estado_filelab()
+    disco = estado["disco"]
+    return _ok(
+        {
+            **estado,
+            "espacio": {
+                "bloques_disponibles": disco["bloques_disponibles"],
+                "bloques_libres": disco["bloques_libres"],
+                "huecos_libres": disco["huecos_libres"],
+                "mayor_hueco_libre": disco["mayor_hueco_libre"],
+            },
+        },
+        msg=(
+            f"Espacio disponible: {disco['bloques_disponibles']} de "
+            f"{disco['total_bloques']} bloques. "
+            f"Mayor hueco contiguo: {disco['mayor_hueco_libre']} bloques."
+        ),
+    )
+
+
+@app.route("/api/filelab/file/<path:nombre>", methods=["GET"])
+def api_filelab_consultar(nombre: str):
+    """2. Consultar archivo: bloques asignados y estructura de control."""
+    try:
+        info = filelab_gestor.consultar_archivo(nombre)
+    except FileNotFoundError as exc:
+        return _err(str(exc), 404)
+    return _ok(
+        {"archivo": {"nombre": nombre, **info}},
+        msg=f"'{nombre}' ocupa {_rango_bloques(info)} (inicio={info['bloque_inicio']}, longitud={info['longitud']}).",
+    )
+
+
+@app.route("/api/filelab/file/<path:nombre>", methods=["DELETE"])
+def api_filelab_eliminar(nombre: str):
+    """3. Eliminar archivo."""
+    try:
+        filelab_gestor.eliminar_archivo(nombre)
+    except FileNotFoundError as exc:
+        return _err(str(exc), 404)
+    return _ok(_estado_filelab(), msg=f"'{nombre}' eliminado.")
+
+
+@app.route("/api/filelab/reset", methods=["POST"])
+def api_filelab_reset():
+    filelab_gestor.resetear()
+    return _ok(_estado_filelab(), msg="Disco vaciado.")
 
 
 # ══════════════════════════════════════════════════════════════════════

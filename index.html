@@ -70,6 +70,7 @@
         <nav class="mode-switch" aria-label="Módulo del simulador">
             <button class="mode-tab active" id="tab-processes" type="button">⚡ Procesos y planificación</button>
             <button class="mode-tab" id="tab-memory" type="button">🧠 Administración de memoria</button>
+            <button class="mode-tab" id="tab-files" type="button">💽 Administración de archivos</button>
             <button class="mode-tab" id="tab-io" type="button">🔌 Dispositivos de E/S</button>
         </nav>
 
@@ -469,6 +470,96 @@
                 </section>
             </div>
         </div><!-- /view-memory -->
+
+        <!-- ═══════════════ MÓDULO INDEPENDIENTE: ARCHIVOS (Avance 5) ═══════════════ -->
+        <div id="view-files" class="memory-view files-view" hidden>
+
+            <nav class="algo-nav" id="file-algo-nav" aria-label="Algoritmos de administración de archivos">
+                <button type="button" class="algo-tab active" data-alg="continua">Algoritmo 1 · Asignación continua</button>
+                <button type="button" class="algo-tab algo-tab-soon" data-alg="enlazada" disabled title="Próximo avance">
+                    Algoritmo 2 · Lista ligada <span class="soon-badge">Próximamente</span>
+                </button>
+                <button type="button" class="algo-tab algo-tab-soon" data-alg="inodos" disabled title="Próximo avance">
+                    Algoritmo 3 · I-nodos <span class="soon-badge">Próximamente</span>
+                </button>
+            </nav>
+
+            <div class="mem-message mem-message-global" id="file-message" role="status"></div>
+
+            <section class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="card-icon">💽</span>
+                        <h2 id="file-section-title">Asignación continua</h2>
+                    </div>
+                    <span class="kv-badge font-mono" id="file-usage">0%</span>
+                </div>
+                <div class="card-body">
+                    <p class="algo-desc" id="file-algo-desc">
+                        Cada archivo debe ocupar una secuencia de bloques físicamente consecutivos. Se busca la
+                        primera racha de bloques libres que alcance el tamaño pedido; si no existe un hueco
+                        contiguo suficiente, la creación se rechaza — aunque la suma de bloques sueltos alcance.
+                    </p>
+
+                    <div class="file-ops" aria-label="Operaciones del simulador de archivos">
+                        <p class="file-ops-title">Simulador de archivos</p>
+                        <div class="file-ops-grid">
+                            <button type="button" class="btn btn-secondary" id="btn-file-example">Cargar ejemplo A–D</button>
+                        </div>
+                    </div>
+
+                    <div class="memory-grid-label" id="file-grid-label">Disco · 20 bloques:</div>
+                    <div class="memory-grid memory-grid--bits" id="file-grid" data-size="lg"></div>
+                    <div class="memory-legend" id="file-legend"></div>
+
+                    <div class="file-report" id="file-report" hidden></div>
+
+                    <div class="mem-alloc-form" id="file-create-form">
+                        <div class="form-group">
+                            <label for="file-name" class="form-label">Nombre del archivo</label>
+                            <input type="text" id="file-name" class="form-input" placeholder="ej. A.txt" maxlength="24">
+                        </div>
+                        <div class="form-group">
+                            <label for="file-size" class="form-label">Tamaño (bloques)</label>
+                            <input type="number" id="file-size" class="form-input" min="1" value="4">
+                        </div>
+                        <button class="btn btn-accent" id="btn-file-create" type="button">Crear archivo</button>
+                    </div>
+
+                    <div class="mem-alloc-form">
+                        <div class="form-group">
+                            <label for="file-query-name" class="form-label">Consultar archivo</label>
+                            <input type="text" id="file-query-name" class="form-input" placeholder="ej. C.txt" maxlength="24">
+                        </div>
+                        <button class="btn btn-secondary" id="btn-file-query" type="button">Consultar</button>
+                        <div class="form-group">
+                            <label for="file-delete-name" class="form-label">Eliminar archivo</label>
+                            <input type="text" id="file-delete-name" class="form-input" placeholder="ej. B.txt" maxlength="24">
+                        </div>
+                        <button class="btn btn-danger" id="btn-file-delete" type="button">Eliminar</button>
+                        <button class="btn btn-secondary" id="btn-file-reset" type="button">Vaciar disco</button>
+                    </div>
+
+                    <div class="memory-stats-grid">
+                        <div class="mem-stat-item"><span class="mem-stat-label">Total</span><strong class="mem-stat-val" id="file-total">20 bloques</strong></div>
+                        <div class="mem-stat-item"><span class="mem-stat-label">Disponible</span><strong class="mem-stat-val text-success" id="file-available">20 bloques</strong></div>
+                        <div class="mem-stat-item"><span class="mem-stat-label">Ocupado</span><strong class="mem-stat-val" id="file-used">0 bloques</strong></div>
+                        <div class="mem-stat-item memory-stat-wide"><span class="mem-stat-label">Mayor hueco contiguo</span><strong class="mem-stat-val" id="file-largest-hole">20 bloques</strong></div>
+                    </div>
+
+                    <div class="metrics-table-wrapper">
+                        <table class="metrics-table" id="file-table">
+                            <thead>
+                                <tr><th>Archivo</th><th>Tamaño</th><th>Bloque inicial</th><th>Bloques ocupados</th><th></th></tr>
+                            </thead>
+                            <tbody id="file-tbody">
+                                <tr><td colspan="5" class="metrics-empty">Sin archivos en el disco.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div><!-- /view-files -->
 
         <!-- ═══════════════ MÓDULO INDEPENDIENTE: DISPOSITIVOS DE E/S (USB) ═══════════════ -->
         <div id="view-io" class="io-view" hidden>

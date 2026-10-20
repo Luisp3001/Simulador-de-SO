@@ -6,7 +6,11 @@ conexiones y desconexiones sin intervención del usuario.
 
 Orígenes de datos (``crear_backend``):
 
-* ``BackendWMI``   → Windows. Usa **WMI** (Win32_PnPEntity, Win32_DiskDrive) para listar
+* ``BackendCfgMgr`` → Windows (método principal). API nativa ``cfgmgr32`` por ``ctypes``: la misma
+  que usa el Administrador de dispositivos. Sin WMI, sin COM y sin pywin32; responde en
+  milisegundos, recorre el árbol real de cada dispositivo y detecta cambios sondeando la lista
+  de IDs presentes cada 0.25 s.
+* ``BackendWMI``   → Windows (alternativa, ``USB_BACKEND=wmi``). Usa **WMI** (Win32_PnPEntity, Win32_DiskDrive) para listar
   los dispositivos y **pywin32** (``pythoncom``) para inicializar COM en el hilo. El driver
   se lee del registro de Windows (milisegundos): Win32_PnPSignedDriver tarda decenas de
   segundos aunque se filtre, así que NO se usa en el camino crítico.
@@ -318,6 +322,238 @@ class BackendWMI:
         return resultado
 
 
+# ═══════════════════ Windows: cfgmgr32 (ctypes, sin WMI ni COM) ═══════════════════
+CM_DRP_DEVICEDESC, CM_DRP_SERVICE, CM_DRP_CLASS, CM_DRP_MFG, CM_DRP_FRIENDLYNAME = 1, 5, 8, 0xC, 0xD
+_CM_FILTRO_ENUMERADOR_PRESENTES = 0x1 | 0x100      # CM_GETIDLIST_FILTER_ENUMERATOR | _PRESENT
+_BUS_REPORTED_DESC = ("540b947e-8b40-45bc-a8a2-6a0b894cbda2", 4)   # DEVPKEY_Device_BusReportedDeviceDesc
+
+VENDEDORES = {
+    "046D": "Logitech", "0951": "Kingston", "0781": "SanDisk", "058F": "Alcor Micro", "0BDA": "Realtek",
+    "04F2": "Chicony", "413C": "Dell", "046A": "Cherry", "0458": "Genius (KYE)", "093A": "Pixart",
+    "0D8C": "C-Media", "04B8": "Epson", "04E8": "Samsung", "05AC": "Apple", "8087": "Intel",
+    "1B1C": "Corsair", "1532": "Razer", "04CA": "Lite-On", "0930": "Toshiba", "154B": "PNY",
+    "090C": "Silicon Motion", "125F": "A-DATA", "0B05": "ASUS", "04D9": "Holtek", "1A2C": "China Resource",
+    "0408": "Quanta", "13D3": "IMC Networks", "0A5C": "Broadcom", "0CF3": "Qualcomm Atheros",
+    "1038": "SteelSeries", "0079": "DragonRise", "045E": "Microsoft", "03F0": "HP", "17EF": "Lenovo",
+    "2109": "VIA Labs", "05E3": "Genesys Logic", "0409": "NEC", "04B3": "IBM", "1BCF": "Sunplus",
+}
+_HUBS = ("usbhub", "usbhub3", "usbhub30")
+
+
+def _limpia(texto: str | None) -> str | None:
+    """'@usb.inf,%x%;Dispositivo compuesto USB' → 'Dispositivo compuesto USB'."""
+    if not texto:
+        return None
+    t = str(texto).strip()
+    if t.startswith("@") and ";" in t:
+        t = t.rsplit(";", 1)[1].strip()
+    return t or None
+
+
+def clasificar_multi(servicios, clases: set[str]) -> str:
+    """Como ``clasificar`` pero mirando el servicio del dispositivo y el de sus interfaces."""
+    candidatos = [clasificar(sv, clases) for sv in (list(servicios) or [None])]
+    for c in candidatos:
+        if c not in ("usb", "hid"):
+            return c
+    return "hid" if "hid" in candidatos else "usb"
+
+
+class _CfgMgr:
+    """Envoltorio mínimo de cfgmgr32.dll (ctypes). Todos los métodos devuelven None/[] si la API falla."""
+
+    def __init__(self, dll=None) -> None:
+        import ctypes
+        self._ct = ctypes
+        self._d = dll if dll is not None else ctypes.WinDLL("cfgmgr32")
+
+    def ids_presentes(self, enumerador: str = "USB") -> list[str]:
+        ct = self._ct
+        for _ in range(3):                               # la lista puede crecer entre las dos llamadas
+            n = ct.c_ulong(0)
+            r = self._d.CM_Get_Device_ID_List_SizeW(ct.byref(n), enumerador, _CM_FILTRO_ENUMERADOR_PRESENTES)
+            if r != 0:
+                raise OSError(f"CM_Get_Device_ID_List_SizeW devolvió {r}")
+            if n.value <= 1:
+                return []
+            buf = ct.create_unicode_buffer(n.value)
+            r = self._d.CM_Get_Device_ID_ListW(enumerador, buf, n.value, _CM_FILTRO_ENUMERADOR_PRESENTES)
+            if r == 0:
+                return [x for x in buf[:n.value].split("\0") if x]
+            if r != 0x1A:                                 # CR_BUFFER_SMALL → reintentar
+                raise OSError(f"CM_Get_Device_ID_ListW devolvió {r}")
+        raise OSError("La lista de dispositivos cambia constantemente")
+
+    def nodo(self, did: str) -> int | None:
+        h = self._ct.c_ulong(0)
+        return h.value if self._d.CM_Locate_DevNodeW(self._ct.byref(h), did, 0) == 0 else None
+
+    def id_de(self, devinst: int) -> str:
+        buf = self._ct.create_unicode_buffer(512)
+        return buf.value if self._d.CM_Get_Device_IDW(devinst, buf, 512, 0) == 0 else ""
+
+    def hijo(self, devinst: int) -> int | None:
+        h = self._ct.c_ulong(0)
+        return h.value if self._d.CM_Get_Child(self._ct.byref(h), devinst, 0) == 0 else None
+
+    def hermano(self, devinst: int) -> int | None:
+        h = self._ct.c_ulong(0)
+        return h.value if self._d.CM_Get_Sibling(self._ct.byref(h), devinst, 0) == 0 else None
+
+    def propiedad(self, devinst: int, prop: int) -> str | None:
+        ct = self._ct
+        tipo, n = ct.c_ulong(0), ct.c_ulong(0)
+        self._d.CM_Get_DevNode_Registry_PropertyW(devinst, prop, ct.byref(tipo), None, ct.byref(n), 0)
+        if n.value < 2:
+            return None
+        buf = ct.create_unicode_buffer(n.value // 2 + 1)
+        if self._d.CM_Get_DevNode_Registry_PropertyW(devinst, prop, ct.byref(tipo), buf, ct.byref(n), 0) != 0:
+            return None
+        return buf.value or None
+
+    def propiedad_dev(self, devinst: int, guid: str, pid: int) -> str | None:
+        """Propiedad moderna (DEVPKEY) de tipo texto, p. ej. el nombre que el propio USB reporta."""
+        import uuid
+        ct = self._ct
+
+        class GUID(ct.Structure):
+            _fields_ = [("a", ct.c_uint32), ("b", ct.c_uint16), ("c", ct.c_uint16), ("d", ct.c_ubyte * 8)]
+
+        class DEVPROPKEY(ct.Structure):
+            _fields_ = [("fmtid", GUID), ("pid", ct.c_uint32)]
+
+        u = uuid.UUID(guid)
+        clave = DEVPROPKEY(GUID(u.time_low, u.time_mid, u.time_hi_version, (ct.c_ubyte * 8)(*u.bytes[8:])), pid)
+        tipo, n = ct.c_ulong(0), ct.c_ulong(0)
+        self._d.CM_Get_DevNode_PropertyW(devinst, ct.byref(clave), ct.byref(tipo), None, ct.byref(n), 0)
+        if n.value < 2:
+            return None
+        buf = ct.create_unicode_buffer(n.value // 2 + 1)
+        if self._d.CM_Get_DevNode_PropertyW(devinst, ct.byref(clave), ct.byref(tipo), buf, ct.byref(n), 0) != 0:
+            return None
+        return buf.value or None
+
+    def problema(self, devinst: int) -> int:
+        ct = self._ct
+        estado, problema = ct.c_ulong(0), ct.c_ulong(0)
+        r = self._d.CM_Get_DevNode_Status(ct.byref(estado), ct.byref(problema), devinst, 0)
+        return problema.value if r == 0 else 0
+
+
+class BackendCfgMgr:
+    nombre = "Windows nativo (cfgmgr32, sin WMI)"
+    simulado = False
+    espera_tras_evento = 0.0
+    repasos = (1.0, 2.5, 5.0)     # Windows enlaza interfaces y drivers unos segundos después de conectar
+
+    def __init__(self, cfg=None, registro="auto") -> None:
+        self._cfg = cfg if cfg is not None else _CfgMgr()
+        self._registro = registro_windows if registro == "auto" else registro
+        self._firma: frozenset | None = None
+        self._cache: dict[str, dict] = {}
+        self.detalle_tiempos = ""
+        self.ids_bus = 0
+        self._cfg.ids_presentes("USB")        # autoprueba: si la API no responde, se lanza aquí
+
+    def preparar(self) -> None:
+        pass
+
+    def cerrar(self) -> None:
+        pass
+
+    def esperar_cambio(self, timeout: float) -> bool:
+        """Sondea la lista de IDs USB presentes (microsegundos): si cambia, hubo conexión o desconexión."""
+        fin = time.monotonic() + timeout
+        while True:
+            try:
+                firma = frozenset(self._cfg.ids_presentes("USB"))
+                if self._firma is not None and firma != self._firma:
+                    return True
+            except OSError:
+                pass
+            if time.monotonic() >= fin:
+                return False
+            time.sleep(0.25)
+
+    # ── lectura ──────────────────────────────────────────────────────────
+    def _driver_de(self, did: str, servicio: str | None) -> dict:
+        if did in self._cache:
+            return self._cache[did]
+        datos = (self._registro(did) if self._registro else None) or {}
+        info = driver_info(nombre=servicio or datos.get("servicio"), proveedor=datos.get("proveedor"),
+                           version=datos.get("version"), fecha=datos.get("fecha"), inf=datos.get("inf"),
+                           descripcion=datos.get("descripcion"))
+        if info["version"] or info["proveedor"]:          # completo → se guarda; si no, se reintenta
+            self._cache[did] = info
+        return info
+
+    def _datos(self, devinst: int, did: str | None = None) -> dict:
+        p = self._cfg.propiedad
+        return {"devinst": devinst, "id": did or self._cfg.id_de(devinst),
+                "desc": _limpia(p(devinst, CM_DRP_DEVICEDESC)), "friendly": _limpia(p(devinst, CM_DRP_FRIENDLYNAME)),
+                "servicio": p(devinst, CM_DRP_SERVICE), "clase": p(devinst, CM_DRP_CLASS),
+                "mfg": _limpia(p(devinst, CM_DRP_MFG))}
+
+    def _descendientes(self, devinst: int, nivel: int = 0) -> list[dict]:
+        res: list[dict] = []
+        h = self._cfg.hijo(devinst)
+        while h is not None and len(res) < 40:
+            d = self._datos(h)
+            res.append(d)
+            if nivel < 4 and (d["servicio"] or "").lower() not in _HUBS:
+                res.extend(self._descendientes(h, nivel + 1))
+            h = self._cfg.hermano(h)
+        return res
+
+    def escanear(self) -> dict[str, dict]:
+        t0 = time.perf_counter()
+        ids = self._cfg.ids_presentes("USB")
+        self._firma = frozenset(ids)
+        self.ids_bus = len(ids)
+        resultado: dict[str, dict] = {}
+        usados: set[str] = set()
+        for did in ids:
+            u = did.upper()
+            if not u.startswith("USB\\VID_") or "&MI_" in u:     # solo dispositivos (no root hubs ni interfaces)
+                continue
+            devinst = self._cfg.nodo(did)
+            if devinst is None:
+                continue
+            nodo = self._datos(devinst, did)
+            usados.add(did)
+            es_hub = (nodo["servicio"] or "").lower() in _HUBS
+            hijos = [] if es_hub else self._descendientes(devinst)
+            for h in hijos:
+                usados.add(h["id"])
+            m = _VID_PID.search(did)
+            vid, pid = (m.group(1).upper(), m.group(2).upper()) if m else (None, None)
+
+            clases = {nodo["clase"] or ""} | {h["clase"] or "" for h in hijos}
+            servicios = [nodo["servicio"]] + [h["servicio"] for h in hijos]
+            disco = next((h for h in hijos if (h["clase"] or "").lower() == "diskdrive"), None)
+            reportado = self._cfg.propiedad_dev(devinst, *_BUS_REPORTED_DESC)
+            nombre = ((disco or {}).get("friendly") or (disco or {}).get("desc") or reportado
+                      or nodo["friendly"] or nodo["desc"] or "Dispositivo USB")
+            mfg = nodo["mfg"]
+            fabricante = VENDEDORES.get(vid or "") or (
+                mfg if mfg and not mfg.startswith("(") and "compatible" not in mfg.lower() else None)
+            serie = did.split("\\")[-1]
+            code = self._cfg.problema(devinst)
+            resultado[did] = {
+                "id": did, "nombre": nombre, "fabricante": fabricante,
+                **_tipo(clasificar_multi(servicios, clases)),
+                "vid": vid, "pid": pid, "serie": serie if "&" not in serie else None,
+                "estado": "Funcionando correctamente" if code == 0 else f"Error de dispositivo (código {code})",
+                "detalle": None,
+                "driver": self._driver_de(did, nodo["servicio"]),
+                "interfaces": [{"nombre": h["friendly"] or h["desc"] or h["id"], "clase": h["clase"],
+                                "driver": self._driver_de(h["id"], h["servicio"])} for h in hijos[:8]],
+            }
+        self._cache = {k: v for k, v in self._cache.items() if k in usados}
+        self.detalle_tiempos = f"{len(ids)} IDs en el bus USB · {(time.perf_counter() - t0) * 1000:.0f} ms"
+        return resultado
+
+
 # ════════════════════════════════ Linux: sysfs ════════════════════════════════
 class BackendSysfs:
     nombre = "sysfs (Linux)"
@@ -500,11 +736,24 @@ def crear_backend(modo: str = "auto"):
     modo = (modo or "auto").lower()
     if modo == "auto":
         if sys.platform == "win32":
-            modo = "wmi"
+            modo = "windows"
         elif Path("/sys/bus/usb/devices").is_dir():
             modo = "sysfs"
         else:
             modo = "sim"
+    if modo in ("windows", "cfgmgr"):
+        errores = []
+        try:
+            return BackendCfgMgr()
+        except Exception as exc:
+            errores.append(f"cfgmgr32: {exc}")
+        try:                                   # alternativa: WMI (si está instalado)
+            return BackendWMI()
+        except Exception as exc:
+            errores.append(f"WMI: {exc}")
+        return BackendNoDisponible(
+            "Windows", "No se pudo leer la lista de dispositivos USB (" + " | ".join(errores) + "). "
+            "Ejecuta «python diagnostico_usb.py» y comparte la salida.")
     if modo == "wmi":
         try:
             return BackendWMI()
@@ -512,7 +761,7 @@ def crear_backend(modo: str = "auto"):
             return BackendNoDisponible(
                 "WMI + pywin32 (Windows)",
                 "Faltan las librerías WMI y pywin32. Instálalas con «pip install wmi pywin32» "
-                "(o «uv add wmi pywin32») y reinicia el servidor.")
+                "o usa el método nativo (sin variable USB_BACKEND).")
     if modo == "sysfs":
         return BackendSysfs()
     return BackendSimulado()
@@ -533,6 +782,7 @@ class MonitorUSB:
         self._error: str | None = None
         self._stop = threading.Event()
         self._hilo: threading.Thread | None = None
+        self._bitacora: list[str] = []
         self._t_evento: float | None = None
         self._escaneo_s: float | None = None
         self._debug = os.environ.get("USB_DEBUG") == "1"
@@ -557,6 +807,10 @@ class MonitorUSB:
         """Escaneo inmediato (solo modo simulado; WMI debe usarse desde su propio hilo)."""
         self._escanear()
 
+    def _anotar(self, texto: str) -> None:
+        self._bitacora.append(f"{datetime.now().strftime('%H:%M:%S')}  {texto}")
+        del self._bitacora[:-30]
+
     def _escanear(self) -> None:
         with self._scan_lock:
             t0 = time.perf_counter()
@@ -565,18 +819,29 @@ class MonitorUSB:
                 self._error = None
             except Exception as exc:     # no tumbar el hilo por un fallo puntual
                 self._error = f"No se pudo leer la lista de dispositivos USB: {exc}"
+                self._anotar(f"ERROR al escanear: {exc!r}")
+                with self._lock:
+                    if not self._listo:
+                        self._listo = True
+                        self._version += 1
                 return
             self._escaneo_s = time.perf_counter() - t0
+            antes = set(self._dispositivos)
             self._aplicar(actuales)
+            if set(actuales) != antes or not self._bitacora:
+                self._anotar(f"escaneo: {len(actuales)} dispositivo(s) USB "
+                             f"({getattr(self.backend, 'detalle_tiempos', '') or f'{self._escaneo_s * 1000:.0f} ms'})")
             if self._debug:
                 lat = f" · evento→lista {time.monotonic() - self._t_evento:.2f}s" if self._t_evento else ""
                 print(f"[usb] escaneo {self._escaneo_s:.2f}s ({getattr(self.backend, 'detalle_tiempos', '')}){lat}",
                       flush=True)
 
     def _bucle(self) -> None:
+        self._anotar(f"método: {self.backend.nombre} · Python {platform.python_version()} · {platform.platform()}")
         try:
             self.backend.preparar()
         except Exception as exc:
+            self._anotar(f"ERROR al preparar el método: {exc}")
             with self._lock:
                 self._error = str(exc)
                 self._listo = True
@@ -647,6 +912,11 @@ class MonitorUSB:
                 "dispositivos": sorted(self._dispositivos.values(), key=lambda d: d["conectado_en"]),
                 "eventos": list(reversed(self._eventos)),
             }
+        datos["diagnostico"] = {
+            "metodo": self.backend.nombre, "plataforma": platform.platform(),
+            "python": platform.python_version(), "ids_bus": getattr(self.backend, "ids_bus", None),
+            "bitacora": list(self._bitacora),
+        }
         if self.simulado:
             datos["catalogo"] = self.backend.catalogo()
         return datos

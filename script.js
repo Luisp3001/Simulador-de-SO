@@ -99,6 +99,36 @@ const dom = {
     btnMemAlloc:   $('btn-mem-alloc'),
     memProcTbody:  $('mem-proc-tbody'),
 
+    // Módulo de archivos (independiente) — Avance 5
+    tabFiles:        $('tab-files'),
+    viewFiles:       $('view-files'),
+    fileAlgoNav:     $('file-algo-nav'),
+    fileMessage:     $('file-message'),
+    fileSectionTitle:$('file-section-title'),
+    fileAlgoDesc:    $('file-algo-desc'),
+    fileGridLabel:   $('file-grid-label'),
+    fileGrid:        $('file-grid'),
+    fileLegend:      $('file-legend'),
+    fileName:        $('file-name'),
+    fileSize:        $('file-size'),
+    btnFileCreate:   $('btn-file-create'),
+    fileQueryName:   $('file-query-name'),
+    btnFileQuery:    $('btn-file-query'),
+    fileDeleteName:  $('file-delete-name'),
+    btnFileDelete:   $('btn-file-delete'),
+    btnFileReset:    $('btn-file-reset'),
+    btnFileExample:  $('btn-file-example'),
+    fileOps:         document.querySelector('.file-ops'),
+    fileReport:      $('file-report'),
+    fileCreateForm:  $('file-create-form'),
+    fileUsage:       $('file-usage'),
+    fileTotal:       $('file-total'),
+    fileAvailable:   $('file-available'),
+    fileUsed:        $('file-used'),
+    fileLargestHole: $('file-largest-hole'),
+    fileTable:       $('file-table'),
+    fileTbody:       $('file-tbody'),
+
     logOutput:     $('log-output'),
 
     btnStart:      $('btn-start'),
@@ -221,16 +251,20 @@ function showMemMessage(msg, kind = 'info') {
 }
 
 function setMode(mode) {
-    const mem = mode === 'memory';
-    const io  = mode === 'io';
-    document.body.classList.toggle('mode-memory', mem || io);   // oculta CPU/planificador fuera de su módulo
-    dom.viewProcesses.hidden = mem || io;
+    const mem   = mode === 'memory';
+    const files = mode === 'files';
+    const io    = mode === 'io';
+    document.body.classList.toggle('mode-memory', mem || files || io);   // oculta CPU/planificador fuera de su módulo
+    dom.viewProcesses.hidden = mem || files || io;
     dom.viewMemory.hidden = !mem;
+    dom.viewFiles.hidden = !files;
     dom.viewIo.hidden = !io;
-    dom.tabProcesses.classList.toggle('active', !mem && !io);
+    dom.tabProcesses.classList.toggle('active', !mem && !files && !io);
     dom.tabMemory.classList.toggle('active', mem);
+    dom.tabFiles.classList.toggle('active', files);
     dom.tabIo.classList.toggle('active', io);
     if (mem) loadMemLab();
+    if (files) loadFileLab();
     if (window.UsbUI) window.UsbUI.activar(io);
 }
 
@@ -409,6 +443,272 @@ async function allocMemProc() {
         memoria_mb: parseInt(dom.memProcSize.value, 10),
     }));
     if (res.ok) dom.memProcName.value = '';
+}
+
+// ─── MÓDULO DE ARCHIVOS INDEPENDIENTE (Avance 5) ───────────────────────
+let fileLab = null;   // último estado recibido de /api/filelab
+let fileHighlight = null;
+
+const FILE_ALGO_DESC = {
+    continua: 'Cada archivo debe ocupar una secuencia de bloques físicamente consecutivos. Se busca la primera racha de bloques libres que alcance el tamaño pedido; si no existe un hueco contiguo suficiente, la creación se rechaza — aunque la suma de bloques sueltos alcance.',
+    enlazada: 'Cada bloque del archivo guarda un puntero al siguiente: los bloques ya no necesitan ser contiguos. Próximo avance.',
+    inodos:   'Un i-nodo por archivo guarda la lista de los bloques que ocupa. Próximo avance.',
+};
+
+function fileColor(nombre) {         // color estable por nombre de archivo
+    let hash = 0;
+    for (let i = 0; i < nombre.length; i++) hash = (hash * 31 + nombre.charCodeAt(i)) % 360;
+    return `hsl(${hash} 70% 46%)`;
+}
+
+function showFileMessage(msg, kind = 'info') {
+    dom.fileMessage.textContent = msg || '';
+    dom.fileMessage.dataset.kind = kind;
+}
+
+function renderFileGrid(disco) {
+    const n = disco.bloques.length;
+    dom.fileGrid.dataset.size = n <= 64 ? 'lg' : (n <= 256 ? 'md' : 'sm');
+    dom.fileGrid.innerHTML = '';
+    disco.bloques.forEach((b) => {
+        const cell = document.createElement('div');
+        cell.className = `bit-cell ${b.libre ? 'zero' : 'one'}`;
+        if (fileHighlight && b.archivo === fileHighlight) cell.classList.add('file-hit');
+        cell.textContent = String(b.indice);
+        if (!b.libre) {
+            const color = fileColor(b.archivo);
+            cell.style.background = color;
+            cell.style.borderColor = color;
+            cell.style.color = '#fff';
+        }
+        cell.title = b.libre ? `Bloque ${b.indice} · Libre` : `Bloque ${b.indice} · ${b.archivo}`;
+        dom.fileGrid.appendChild(cell);
+    });
+}
+
+function setFileReport(html) {
+    if (!html) {
+        dom.fileReport.hidden = true;
+        dom.fileReport.innerHTML = '';
+        return;
+    }
+    dom.fileReport.hidden = false;
+    dom.fileReport.innerHTML = html;
+}
+
+function renderFileLegend(archivos) {
+    if (!archivos.length) {
+        dom.fileLegend.innerHTML = '<span>Sin archivos: todo el disco está libre.</span>';
+        return;
+    }
+    dom.fileLegend.innerHTML = archivos.map(a =>
+        `<span><b class="legend-swatch" style="background:${fileColor(a.nombre)}"></b> ${escapeHtml(a.nombre)}</span>`
+    ).join('');
+}
+
+function renderFileTable(archivos) {
+    if (!archivos.length) {
+        dom.fileTbody.innerHTML = '<tr><td colspan="5" class="metrics-empty">Sin archivos en el disco.</td></tr>';
+        return;
+    }
+    dom.fileTbody.innerHTML = archivos.map(a => `
+        <tr>
+            <td>${escapeHtml(a.nombre)}</td>
+            <td>${a.longitud} bloques</td>
+            <td class="font-mono">${a.bloque_inicio}</td>
+            <td class="font-mono">${rangoCasillas(a.bloques)}</td>
+            <td>
+                <button class="proc-kill file-query-row" title="Consultar archivo" data-nombre="${escapeHtml(a.nombre)}">🔍</button>
+                <button class="proc-kill" title="Eliminar archivo" data-nombre="${escapeHtml(a.nombre)}">✕</button>
+            </td>
+        </tr>`).join('');
+}
+
+function renderFileLab(data) {
+    fileLab = data;
+    const disco = data.disco;
+
+    dom.fileSectionTitle.textContent = disco.algoritmo_nombre;
+    dom.fileAlgoDesc.textContent = FILE_ALGO_DESC[disco.algoritmo] || '';
+    dom.fileAlgoNav.querySelectorAll('.algo-tab').forEach(b => b.classList.toggle('active', b.dataset.alg === disco.algoritmo));
+    dom.fileUsage.textContent = `${Math.round((disco.bloques_usados / disco.total_bloques) * 100)}%`;
+    dom.fileGridLabel.textContent = `Disco · ${disco.total_bloques} bloques:`;
+
+    renderFileGrid(disco);
+    renderFileLegend(data.archivos);
+    renderFileTable(data.archivos);
+
+    dom.fileTotal.textContent = `${disco.total_bloques} bloques`;
+    dom.fileAvailable.textContent = `${disco.bloques_disponibles} bloques`;
+    dom.fileUsed.textContent = `${disco.bloques_usados} bloques`;
+    dom.fileLargestHole.textContent = `${disco.mayor_hueco_libre} bloques`;
+}
+
+async function loadFileLab() {
+    const data = await apiGet('/filelab');
+    if (data.ok) renderFileLab(data);
+    else showFileMessage('No se pudo consultar el módulo de archivos. ¿Está corriendo server.py?', 'err');
+}
+
+async function fileAction(promise) {
+    const res = await promise;
+    if (res.ok) {
+        renderFileLab(res);
+        showFileMessage(res.msg, 'ok');
+    } else {
+        showFileMessage(res.msg || 'Operación rechazada.', 'err');
+    }
+    return res;
+}
+
+async function selectFileAlgorithm(alg) {
+    const res = await apiPost('/filelab/strategy', { tipo: alg });
+    if (res.ok) { renderFileLab(res); showFileMessage('', 'info'); }
+    else showFileMessage(res.msg, 'err');
+}
+
+async function createFile() {
+    const nombre = dom.fileName.value.trim();
+    const bloques = parseInt(dom.fileSize.value, 10);
+    if (!nombre) { showFileMessage('Ingresa un nombre de archivo.', 'err'); return; }
+    if (!bloques || bloques < 1) { showFileMessage('El tamaño debe ser mayor a 0 bloques.', 'err'); return; }
+    const res = await fileAction(apiPost('/filelab/file', { nombre, bloques }));
+    if (res.ok) dom.fileName.value = '';
+}
+
+function estructuraContinuaHtml(archivo) {
+    const est = archivo.estructura || {};
+    const bloques = (est.bloques || archivo.bloques || []).join(', ');
+    return `
+        <h3>Consulta · ${escapeHtml(archivo.nombre)}</h3>
+        <p>${escapeHtml(est.descripcion || 'Asignación continua: bloque inicial y longitud.')}</p>
+        <dl>
+            <dt>Bloque inicial</dt><dd>${est.bloque_inicial ?? archivo.bloque_inicio}</dd>
+            <dt>Longitud</dt><dd>${est.longitud ?? archivo.longitud} bloques</dd>
+            <dt>Bloque final</dt><dd>${est.bloque_final ?? (archivo.bloque_inicio + archivo.longitud - 1)}</dd>
+            <dt>Bloques asignados</dt><dd>${escapeHtml(bloques)}</dd>
+        </dl>`;
+}
+
+async function queryFile(nombre) {
+    nombre = (nombre || '').trim();
+    if (!nombre) { showFileMessage('Ingresa un nombre de archivo a consultar.', 'err'); return; }
+    const res = await apiGet(`/filelab/file/${encodeURIComponent(nombre)}`);
+    if (res.ok) {
+        fileHighlight = nombre;
+        if (fileLab) renderFileGrid(fileLab.disco);
+        showFileMessage(res.msg, 'ok');
+        setFileReport(estructuraContinuaHtml(res.archivo));
+        dom.fileQueryName.value = nombre;
+    } else {
+        fileHighlight = null;
+        showFileMessage(res.msg || `'${nombre}' no encontrado.`, 'err');
+        setFileReport('');
+    }
+}
+
+async function deleteFile(nombre) {
+    nombre = (nombre || '').trim();
+    if (!nombre) { showFileMessage('Ingresa un nombre de archivo a eliminar.', 'err'); return; }
+    const res = await fileAction(apiDelete(`/filelab/file/${encodeURIComponent(nombre)}`));
+    if (res.ok) {
+        if (fileHighlight === nombre) fileHighlight = null;
+        setFileReport(`<h3>Archivo eliminado</h3><p>Se liberaron los bloques de <strong>${escapeHtml(nombre)}</strong> y se actualizó la tabla de control.</p>`);
+        dom.fileDeleteName.value = '';
+    }
+}
+
+function reporteDiscoHtml(disco) {
+    const filas = disco.bloques.map(b => `
+        <tr>
+            <td>${b.indice}</td>
+            <td class="${b.libre ? 'libre' : 'ocupado'}">${b.libre ? 'Libre' : 'Ocupado'}</td>
+            <td>${b.libre ? '—' : escapeHtml(b.archivo)}</td>
+        </tr>`).join('');
+    return `
+        <h3>Estado del disco</h3>
+        <p>${disco.total_bloques} bloques numerados del 0 al ${disco.total_bloques - 1}.</p>
+        <table>
+            <thead><tr><th>Bloque</th><th>Estado</th><th>Archivo</th></tr></thead>
+            <tbody>${filas}</tbody>
+        </table>`;
+}
+
+function reporteEspacioHtml(disco) {
+    const libres = (disco.bloques_libres || []).join(', ') || 'ninguno';
+    const huecos = (disco.huecos_libres || []).map(h =>
+        `${h.longitud} bloque${h.longitud === 1 ? '' : 's'} desde el ${h.inicio}`
+    ).join('; ') || 'ninguno';
+    return `
+        <h3>Espacio disponible</h3>
+        <dl>
+            <dt>Bloques libres</dt><dd>${disco.bloques_disponibles} de ${disco.total_bloques}</dd>
+            <dt>Índices libres</dt><dd>${escapeHtml(libres)}</dd>
+            <dt>Huecos contiguos</dt><dd>${escapeHtml(huecos)}</dd>
+            <dt>Mayor hueco</dt><dd>${disco.mayor_hueco_libre} bloques</dd>
+        </dl>
+        <p>En asignación continua un archivo solo cabe si existe un hueco contiguo de ese tamaño, no basta con la suma de bloques sueltos.</p>`;
+}
+
+async function showDiskState() {
+    const data = await apiGet('/filelab/disco');
+    if (!data.ok) { showFileMessage(data.msg, 'err'); return; }
+    renderFileLab(data);
+    showFileMessage(data.msg, 'ok');
+    setFileReport(reporteDiscoHtml(data.disco));
+}
+
+async function showFreeSpace() {
+    const data = await apiGet('/filelab/espacio');
+    if (!data.ok) { showFileMessage(data.msg, 'err'); return; }
+    renderFileLab(data);
+    showFileMessage(data.msg, 'ok');
+    setFileReport(reporteEspacioHtml(data.disco));
+}
+
+async function resetFileLab() {
+    fileHighlight = null;
+    const res = await fileAction(apiPost('/filelab/reset'));
+    if (res.ok) setFileReport('<h3>Disco vacío</h3><p>Los 20 bloques quedaron libres y se limpió la tabla de archivos.</p>');
+}
+
+async function loadFileExample() {
+    await apiPost('/filelab/reset');
+    const ejemplo = [['A.txt', 4], ['B.txt', 3], ['C.txt', 5], ['D.txt', 2]];
+    let last = null;
+    for (const [nombre, bloques] of ejemplo) {
+        last = await apiPost('/filelab/file', { nombre, bloques });
+        if (!last.ok) {
+            showFileMessage(last.msg || 'No se pudo cargar el ejemplo.', 'err');
+            return;
+        }
+    }
+    fileHighlight = null;
+    renderFileLab(last);
+    showFileMessage('Ejemplo del enunciado: A.txt=4, B.txt=3, C.txt=5, D.txt=2 en un disco de 20 bloques.', 'ok');
+    setFileReport(`
+        <h3>Escenario de ejemplo</h3>
+        <p>A.txt bloques 0–3 · B.txt 4–6 · C.txt 7–11 · D.txt 12–13. Quedan 6 bloques libres (14–19).</p>`);
+}
+
+function runFileOperation(op) {
+    if (op === 'crear') {
+        dom.fileCreateForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        dom.fileName.focus();
+        return;
+    }
+    if (op === 'consultar') {
+        if (dom.fileQueryName.value.trim()) queryFile(dom.fileQueryName.value);
+        else { dom.fileQueryName.focus(); showFileMessage('Escribe el nombre del archivo a consultar.', 'err'); }
+        return;
+    }
+    if (op === 'eliminar') {
+        if (dom.fileDeleteName.value.trim()) deleteFile(dom.fileDeleteName.value);
+        else { dom.fileDeleteName.focus(); showFileMessage('Escribe el nombre del archivo a eliminar.', 'err'); }
+        return;
+    }
+    if (op === 'disco') return showDiskState();
+    if (op === 'espacio') return showFreeSpace();
 }
 
 // ─── PROCESOS ─────────────────────────────────────────────────────────
@@ -908,6 +1208,33 @@ dom.memProcName.addEventListener('keydown', e => { if (e.key === 'Enter') allocM
 dom.memProcTbody.addEventListener('click', e => {
     const btn = e.target.closest('.proc-kill');
     if (btn) freeMemProc(parseInt(btn.dataset.pid, 10));
+});
+
+// Selector de módulo + módulo de archivos (Avance 5)
+dom.tabFiles.addEventListener('click', () => setMode('files'));
+dom.fileAlgoNav.addEventListener('click', e => {
+    const b = e.target.closest('.algo-tab');
+    if (!b || b.disabled) return;
+    selectFileAlgorithm(b.dataset.alg);
+});
+dom.btnFileCreate.addEventListener('click', createFile);
+dom.fileName.addEventListener('keydown', e => { if (e.key === 'Enter') createFile(); });
+dom.fileSize.addEventListener('keydown', e => { if (e.key === 'Enter') createFile(); });
+dom.btnFileQuery.addEventListener('click', () => queryFile(dom.fileQueryName.value));
+dom.fileQueryName.addEventListener('keydown', e => { if (e.key === 'Enter') queryFile(dom.fileQueryName.value); });
+dom.btnFileDelete.addEventListener('click', () => deleteFile(dom.fileDeleteName.value));
+dom.fileDeleteName.addEventListener('keydown', e => { if (e.key === 'Enter') deleteFile(dom.fileDeleteName.value); });
+dom.btnFileReset.addEventListener('click', resetFileLab);
+dom.btnFileExample.addEventListener('click', loadFileExample);
+dom.fileOps.addEventListener('click', e => {
+    const btn = e.target.closest('[data-file-op]');
+    if (btn) runFileOperation(btn.dataset.fileOp);
+});
+dom.fileTbody.addEventListener('click', e => {
+    const queryBtn = e.target.closest('.file-query-row');
+    if (queryBtn) { queryFile(queryBtn.dataset.nombre); return; }
+    const killBtn = e.target.closest('.proc-kill');
+    if (killBtn) deleteFile(killBtn.dataset.nombre);
 });
 
 // ─── INIT ─────────────────────────────────────────────────────────────

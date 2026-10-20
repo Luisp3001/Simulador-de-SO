@@ -119,14 +119,39 @@ Las capturas para el informe están en `capturas/`. Pruebas: `python tests/test_
 
 ---
 
+## 🗄️ Módulo de archivos independiente (Avance 5)
+
+Se accede desde la pestaña **Administración de archivos** (independiente de CPU, memoria y planificador; no requiere iniciar el SO).
+
+* **Disco**: constante, `20` bloques numerados del `0` al `19` (igual al escenario del enunciado).
+* **Algoritmo 1 · Asignación continua** *(único implementado por ahora)*: cada archivo ocupa una secuencia de bloques físicamente consecutivos. Se busca la primera racha de bloques libres consecutivos que alcance el tamaño pedido (First Fit sobre el arreglo de bloques); si no existe un hueco contiguo suficiente la creación se **rechaza**, aunque la suma de bloques libres sueltos sí alcance. Por archivo solo se guardan **bloque inicial** y **longitud**.
+* **Algoritmo 2 · Asignación mediante lista ligada** y **Algoritmo 3 · Asignación mediante i-nodos**: ya aparecen en la navegación (con la etiqueta «Próximamente») para reflejar el enunciado completo, pero todavía no tienen gestor — quedan para un próximo avance.
+* La interfaz muestra el mapa de bloques del disco (coloreado por archivo dueño), el formulario para crear y consultar archivos, la tabla con el bloque inicial/longitud de cada uno, y las métricas de bloques usados, disponibles y mayor hueco contiguo.
+* Por seguridad, el algoritmo solo puede cambiarse cuando el disco está vacío. La API devuelve `409 Conflict` si se intenta cambiarlo con archivos creados.
+
+### API de archivos
+
+```http
+GET    /api/filelab                 # estado del disco + lista de archivos
+POST   /api/filelab/file             {"nombre": "A.txt", "bloques": 4}
+GET    /api/filelab/file/<nombre>    # consultar un archivo (404 si no existe)
+DELETE /api/filelab/file/<nombre>    # eliminar un archivo
+POST   /api/filelab/reset            # vaciar el disco
+POST   /api/filelab/strategy         {"tipo": "continua"}
+```
+
+Pruebas: `python tests/test_filesystem_algorithms.py` (con `PYTHONPATH=.`), incluye el escenario exacto del enunciado (A.txt/B.txt/C.txt/D.txt en un disco de 20 bloques) y el caso de fragmentación (rechazar por falta de contigüidad aunque sobren bloques sueltos).
+
+---
+
 ## 🔌 Dispositivos de E/S (USB)
 
-Pestaña **Dispositivos de E/S**: lista los dispositivos USB conectados (mouse, teclado, memoria USB, parlantes, audífonos, proyector, etc.) con la información del **driver** ligado a cada uno (driver, proveedor, versión, fecha, archivo INF, firma y drivers de sus interfaces). Inicia con «No se ha conectado ningún dispositivo» y se actualiza sola al conectar o desconectar.
+Pestaña **Dispositivos de E/S**: lista los dispositivos USB conectados (mouse, teclado, memoria USB, parlantes, audífonos, proyector, etc.) con la información del **driver** ligado a cada uno (driver, proveedor, versión, fecha, archivo INF y drivers de sus interfaces). Inicia con «No se ha conectado ningún dispositivo» y se actualiza sola al conectar o desconectar (≈ 0.5 s).
 
-* **Windows (real):** usa **WMI** (`Win32_PnPEntity`, `Win32_DiskDrive`) para listar y **pywin32** (`pythoncom`) para COM; el driver se lee del registro de Windows (rápido: `Win32_PnPSignedDriver` tarda decenas de segundos y no se usa). Los cambios se detectan por evento (`Win32_DeviceChangeEvent`), agrupando la ráfaga de eventos de cada USB en un solo escaneo.
-  Instalación: `uv sync` (o `pip install wmi pywin32`). Ejecutar con `uv run python server.py`.
-* Los dispositivos que ya estaban conectados al abrir el simulador se ocultan por defecto (casilla «Incluir los dispositivos ya conectados» para verlos).
+* **Windows:** método nativo con la API `cfgmgr32` (`ctypes`, la misma del Administrador de dispositivos). No necesita WMI, COM ni pywin32: no hay nada que instalar. El driver se lee del registro de Windows.
+  Alternativa con WMI: `USB_BACKEND=wmi` (requiere `pip install wmi pywin32`).
 * **Linux:** lee `/sys/bus/usb/devices`. **Sin USB accesible:** modo simulado con botones para conectar/desconectar dispositivos de prueba.
-* Forzar el origen: variable de entorno `USB_BACKEND` = `wmi` | `sysfs` | `sim` (por defecto `auto`). En PowerShell: `$env:USB_BACKEND="sim"; uv run python server.py`.
+* Los dispositivos que ya estaban conectados al abrir el simulador se ocultan por defecto (casilla «Incluir los dispositivos ya conectados» para verlos).
+* **Diagnóstico (consola):** `python diagnostico_usb.py`.
+* Forzar el origen: variable de entorno `USB_BACKEND` = `windows` | `wmi` | `sysfs` | `sim`. En PowerShell: `$env:USB_BACKEND="sim"; python server.py`.
 * API: `GET /api/usb` (listado + `version` que cambia con cada conexión/desconexión).
-* **Medir tiempos (Windows):** `uv run python diagnostico_usb.py`. Con `USB_DEBUG=1` el servidor imprime la duración de cada escaneo y la latencia evento→lista.

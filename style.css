@@ -1488,6 +1488,24 @@ body.mode-memory .nav-actions { display: none; }
 .mem-section { display: grid; gap: 1rem; }
 .algo-desc { color: var(--text-secondary); font-size: 0.82rem; line-height: 1.5; margin-bottom: 0.9rem; }
 
+/* Pestañas de algoritmo aún no implementado (Avance 5 · Algoritmos 2 y 3) */
+.algo-tab.algo-tab-soon, .algo-tab[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.algo-tab.algo-tab-soon:hover { color: var(--text-muted); border-color: var(--border-subtle); }
+.soon-badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--accent-amber);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+}
+
 .pg-refs-group { flex: 1 1 320px; }
 .pg-small { width: 120px; }
 
@@ -1551,6 +1569,60 @@ body.mode-memory .nav-actions { display: none; }
 .pg-bar-val { text-align: right; }
 
 .mem-message-global { margin: 0.25rem 0 0; }
+
+.file-ops {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.file-ops-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.65rem;
+}
+.file-ops-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.5rem;
+}
+.file-report {
+  margin: 0.4rem 0 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--bg-card-inner);
+  border-left: 3px solid var(--accent-sky);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.83rem;
+  line-height: 1.55;
+}
+.file-report h3 { color: var(--text-pure); font-size: 0.9rem; margin-bottom: 0.45rem; }
+.file-report dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 0.9rem;
+  margin: 0.4rem 0 0.7rem;
+}
+.file-report dt { color: var(--text-muted); }
+.file-report dd { color: var(--text-main); font-family: var(--font-mono); margin: 0; }
+.file-report table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 0.78rem; }
+.file-report th, .file-report td {
+  text-align: left;
+  padding: 0.28rem 0.4rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.file-report .ocupado { color: #fbbf24; }
+.file-report .libre { color: #34d399; }
+.bit-cell.file-hit {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+  position: relative;
+  z-index: 1;
+}
 /* La columna «Cálculo» (⌈tamaño/unidad⌉) solo existe en el mapa de bits */
 #mem-proc-table:not([data-modo="bitmap"]) th:nth-child(4),
 #mem-proc-table:not([data-modo="bitmap"]) td:nth-child(4) { display: none; }
